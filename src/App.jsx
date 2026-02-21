@@ -19,7 +19,6 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
-
 import { motion, AnimatePresence } from "framer-motion";
 
 import Dashboard from "./components/Dashboard";
@@ -31,6 +30,7 @@ import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
 import Account from "./components/Account";
+
 import "./App.css";
 
 export default function App() {
@@ -183,6 +183,11 @@ export default function App() {
 
               if (isRegistering) {
 
+                if (roleChoice === "athlete" && !inviteCode.trim()) {
+                  alert("Invite code required.");
+                  return;
+                }
+
                 const cred = await createUserWithEmailAndPassword(
                   auth,
                   email,
@@ -263,7 +268,7 @@ export default function App() {
   return (
     <div className="app">
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR (Desktop) */}
       <div className="sidebar">
 
         <h3 style={{ marginBottom: 20 }}>PTW</h3>
@@ -327,32 +332,42 @@ export default function App() {
 
           </motion.div>
         </AnimatePresence>
+
       </div>
 
-    {/* MOBILE BOTTOM NAV */}
-    <div className="bottom-nav">
+      {/* MOBILE NAV */}
+      <div className="bottom-nav">
 
-      <NavItem label="🏠" onClick={() => setActiveTab("dashboard")} />
-      <NavItem label="💪" onClick={() => setActiveTab("workouts")} />
-      <NavItem label="📈" onClick={() => setActiveTab("progress")} />
-      
-      {profile.role === "coach" && (
-        <NavItem label="🧠" onClick={() => setActiveTab("deep")} />
-      )}
+        <NavItem label="🏠" onClick={() => setActiveTab("dashboard")} />
+        <NavItem label="💪" onClick={() => setActiveTab("workouts")} />
+        <NavItem label="📈" onClick={() => setActiveTab("progress")} />
 
-      <NavItem label="👤" onClick={() => setActiveTab("account")} />
+        {profile.role === "coach" &&
+          <NavItem label="🧠" onClick={() => setActiveTab("deep")} />}
+
+        <NavItem label="👤" onClick={() => setActiveTab("account")} />
+
+      </div>
 
     </div>
-  </div>
-);
+  );
 }
+
+/* ================= SIDEBAR ITEM ================= */
+
+function SidebarItem({ label, onClick }) {
+  return (
+    <div className="sidebar-item" onClick={onClick}>
+      {label}
+    </div>
+  );
+}
+
+/* ================= BOTTOM NAV ITEM ================= */
 
 function NavItem({ label, onClick }) {
   return (
-    <div
-      className="bottom-nav-item"
-      onClick={onClick}
-    >
+    <div className="bottom-nav-item" onClick={onClick}>
       {label}
     </div>
   );
