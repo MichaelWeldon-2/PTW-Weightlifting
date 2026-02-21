@@ -54,7 +54,6 @@ export default function App() {
   /* ================= LOAD USER TEAMS ================= */
 
   const loadTeams = async (uid) => {
-
     const teamsSnap = await getDocs(
       collection(db, "users", uid, "teams")
     );
@@ -62,7 +61,6 @@ export default function App() {
     const userTeams = [];
 
     for (const docSnap of teamsSnap.docs) {
-
       const teamId = docSnap.id;
       const teamSnap = await getDoc(doc(db, "teams", teamId));
 
@@ -84,9 +82,7 @@ export default function App() {
   /* ================= AUTH LISTENER ================= */
 
   useEffect(() => {
-
     const unsub = onAuthStateChanged(auth, async (u) => {
-
       setUser(u);
 
       if (!u) {
@@ -97,7 +93,6 @@ export default function App() {
       }
 
       try {
-
         const snap = await getDoc(doc(db, "users", u.uid));
 
         if (!snap.exists()) {
@@ -117,7 +112,6 @@ export default function App() {
     });
 
     return () => unsub();
-
   }, []);
 
   /* ================= AUTH SCREEN ================= */
@@ -178,31 +172,18 @@ export default function App() {
 
         <button
           onClick={async () => {
-
             try {
 
               if (isRegistering) {
 
-                if (roleChoice === "athlete" && !inviteCode.trim()) {
-                  alert("Invite code required.");
-                  return;
-                }
-
-                const cred = await createUserWithEmailAndPassword(
-                  auth,
-                  email,
-                  password
-                );
-
-                const uid = cred.user.uid;
-
-                await setDoc(doc(db, "users", uid), {
-                  displayName: email.split("@")[0],
-                  role: roleChoice,
-                  createdAt: serverTimestamp()
-                });
+                let teamId = null;
 
                 if (roleChoice === "athlete") {
+
+                  if (!inviteCode.trim()) {
+                    alert("Invite code required.");
+                    return;
+                  }
 
                   const q = query(
                     collection(db, "teams"),
@@ -216,7 +197,25 @@ export default function App() {
                     return;
                   }
 
-                  const teamId = snap.docs[0].id;
+                  teamId = snap.docs[0].id;
+                }
+
+                const cred = await createUserWithEmailAndPassword(
+                  auth,
+                  email,
+                  password
+                );
+
+                const uid = cred.user.uid;
+
+                await setDoc(doc(db, "users", uid), {
+                  displayName: email.split("@")[0],
+                  role: roleChoice,
+                  teamId: teamId || null,
+                  createdAt: serverTimestamp()
+                });
+
+                if (roleChoice === "athlete" && teamId) {
 
                   await setDoc(
                     doc(db, "users", uid, "teams", teamId),
@@ -232,16 +231,13 @@ export default function App() {
                 }
 
               } else {
-
                 await signInWithEmailAndPassword(auth, email, password);
-
               }
 
             } catch (err) {
               console.error("Auth error:", err);
               alert(err.message);
             }
-
           }}
         >
           {isRegistering ? "Create Account" : "Login"}
@@ -255,7 +251,6 @@ export default function App() {
             ? "Already have an account? Login"
             : "Don't have an account? Create one"}
         </p>
-
       </div>
     );
   }
@@ -268,32 +263,29 @@ export default function App() {
   return (
     <div className="app">
 
-      {/* SIDEBAR (Desktop) */}
+      {/* DESKTOP SIDEBAR */}
       <div className="sidebar">
-
         <h3 style={{ marginBottom: 20 }}>PTW</h3>
 
-        <SidebarItem label="Dashboard" onClick={() => setActiveTab("dashboard")} />
-        <SidebarItem label="Workouts" onClick={() => setActiveTab("workouts")} />
-        <SidebarItem label="Progress" onClick={() => setActiveTab("progress")} />
-        <SidebarItem label="Leaderboard" onClick={() => setActiveTab("leaderboard")} />
+        <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+        <SidebarItem label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+        <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+        <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
 
         {profile.role === "coach" && (
           <>
-            <SidebarItem label="Coach" onClick={() => setActiveTab("coach")} />
-            <SidebarItem label="Athlete Analytics" onClick={() => setActiveTab("deep")} />
-            <SidebarItem label="Program Builder" onClick={() => setActiveTab("program")} />
-            <SidebarItem label="Create Team" onClick={() => setActiveTab("createTeam")} />
+            <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
+            <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
+            <SidebarItem label="Program Builder" active={activeTab==="program"} onClick={()=>setActiveTab("program")} />
+            <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
           </>
         )}
 
-        <SidebarItem label="Account" onClick={() => setActiveTab("account")} />
-
+        <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
       </div>
 
       {/* CONTENT */}
       <div className="content">
-
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab + activeTeam?.id}
@@ -303,96 +295,49 @@ export default function App() {
             transition={{ duration: 0.25 }}
           >
 
-            {activeTab === "dashboard" &&
-              <Dashboard profile={profile} team={activeTeam} />}
-
-            {activeTab === "workouts" &&
-              <Workouts profile={profile} team={activeTeam} />}
-
-            {activeTab === "progress" &&
-              <AthleteProgress profile={profile} team={activeTeam} />}
-
-            {activeTab === "leaderboard" &&
-              <Leaderboard profile={profile} team={activeTeam} />}
-
-            {activeTab === "deep" && profile.role === "coach" &&
-              <AthleteDeepDive team={activeTeam} />}
-
-            {activeTab === "coach" && profile.role === "coach" &&
-              <CoachDashboard team={activeTeam} />}
-
-            {activeTab === "program" && profile.role === "coach" &&
-              <ProgramBuilder team={activeTeam} />}
-
-            {activeTab === "createTeam" && profile.role === "coach" &&
-              <CreateTeam profile={profile} />}
-
-            {activeTab === "account" &&
-              <Account profile={profile} />}
+            {activeTab === "dashboard" && <Dashboard profile={profile} team={activeTeam} />}
+            {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
+            {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
+            {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
+            {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
+            {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
+            {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
+            {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
+            {activeTab === "account" && <Account profile={profile} />}
 
           </motion.div>
         </AnimatePresence>
-
       </div>
 
-      {/* MOBILE NAV */}
-     <div className="bottom-nav">
-
-  <NavItem
-    icon="🏠"
-    label="Home"
-    active={activeTab === "dashboard"}
-    onClick={() => setActiveTab("dashboard")}
-  />
-
-  <NavItem
-    icon="💪"
-    label="Workouts"
-    active={activeTab === "workouts"}
-    onClick={() => setActiveTab("workouts")}
-  />
-
-  <NavItem
-    icon="📈"
-    label="Progress"
-    active={activeTab === "progress"}
-    onClick={() => setActiveTab("progress")}
-  />
-
-  {profile.role === "coach" && (
-    <NavItem
-      icon="🧠"
-      label="Analytics"
-      active={activeTab === "deep"}
-      onClick={() => setActiveTab("deep")}
-    />
-  )}
-
-  <NavItem
-    icon="👤"
-    label="Account"
-    active={activeTab === "account"}
-    onClick={() => setActiveTab("account")}
-  />
-
+      {/* MOBILE BOTTOM NAV */}
+      <div className="bottom-nav">
+        <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+        <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+        <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+        {profile.role==="coach" && (
+          <NavItem icon="🧠" label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
+        )}
+        <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
       </div>
 
     </div>
-    
   );
 }
 
-/* ================= SIDEBAR ITEM ================= */
+/* ================= SIDEBAR ================= */
 
-function SidebarItem({ label, onClick }) {
+function SidebarItem({ label, active, onClick }) {
   return (
-    <div className="sidebar-item" onClick={onClick}>
+    <div
+      className={`sidebar-item ${active ? "active" : ""}`}
+      onClick={onClick}
+    >
       {label}
     </div>
   );
 }
 
-/* ================= BOTTOM NAV ITEM ================= */
+/* ================= MOBILE NAV ================= */
 
 function NavItem({ icon, label, active, onClick }) {
   return (
