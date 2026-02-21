@@ -5,6 +5,7 @@ import {
   onAuthStateChanged,
   signOut
 } from "firebase/auth";
+
 import {
   doc,
   getDoc,
@@ -13,10 +14,9 @@ import {
   collection,
   query,
   where,
-  updateDoc,
-  arrayUnion,
   serverTimestamp
 } from "firebase/firestore";
+
 import { auth, db } from "./firebase";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -41,12 +41,7 @@ export default function App() {
   const [activeTeam, setActiveTeam] = useState(null);
 
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
-
-  const [theme, setTheme] = useState(
-    localStorage.getItem("theme") || "light"
-  );
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -54,13 +49,6 @@ export default function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [roleChoice, setRoleChoice] = useState("athlete");
   const [inviteCode, setInviteCode] = useState("");
-
-  /* ================= THEME ================= */
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
 
   /* ================= LOAD USER TEAMS ================= */
 
@@ -108,38 +96,32 @@ export default function App() {
         return;
       }
 
-  try {
+      try {
 
-    const userRef = doc(db, "users", u.uid);
-    const snap = await getDoc(userRef);
+        const userRef = doc(db, "users", u.uid);
+        const snap = await getDoc(userRef);
 
-    if (!snap.exists()) {
-      // Wait for profile creation
+        if (!snap.exists()) {
+          setLoadingProfile(false);
+          return;
+        }
+
+        setProfile({ uid: u.uid, ...snap.data() });
+
+        await loadTeams(u.uid);
+
+      } catch (err) {
+        console.error("Profile load error:", err);
+        setProfile(null);
+      }
+
       setLoadingProfile(false);
-      return;
-    }
 
-    const profileData = snap.data();
-    setProfile({ uid: u.uid, ...profileData });
-
-    await loadTeams(u.uid);
-
-  } catch (err) {
-    console.error("Profile load error:", err);
-    setProfile(null);
-  }
-
-  setLoadingProfile(false);
-
-});
+    });
 
     return () => unsub();
 
   }, []);
-
-  const toggleTheme = () => {
-    setTheme(prev => (prev === "light" ? "dark" : "light"));
-  };
 
   const logout = async () => {
     await signOut(auth);
@@ -150,6 +132,7 @@ export default function App() {
   /* ================= AUTH SCREEN ================= */
 
   if (!user) {
+
     return (
       <div className="auth-container">
 
@@ -211,7 +194,7 @@ export default function App() {
               if (isRegistering) {
 
                 if (roleChoice === "athlete" && !inviteCode.trim()) {
-                  alert("Invite code required for athletes.");
+                  alert("Invite code required.");
                   return;
                 }
 
@@ -258,22 +241,12 @@ export default function App() {
                       joinedAt: serverTimestamp()
                     }
                   );
-
-                  await updateDoc(
-                    doc(db, "teams", teamId),
-                    {
-                      members: arrayUnion(uid)
-                    }
-                  );
                 }
 
               } else {
 
-                await signInWithEmailAndPassword(
-                  auth,
-                  email,
-                  password
-                );
+                await signInWithEmailAndPassword(auth, email, password);
+
               }
 
             } catch (err) {
@@ -307,77 +280,31 @@ export default function App() {
     return <div className="loading">Profile not found.</div>;
   }
 
-  {/* ================= MAIN APP ================= */}
+  /* ================= MAIN APP ================= */
 
   return (
     <div className="app">
 
-      <div className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
-        {/* Sidebar content stays exactly as you had it */}
-        ...
-      </div>
-
       <div className="content">
+
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab + activeTeam?.id}
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.25 }}
           >
-            {activeTab === "dashboard" && <Dashboard profile={profile} team={activeTeam} />}
-            {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
-            {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
-            {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
-            {activeTab === "deep" && profile.role === "coach" && <AthleteDeepDive profile={profile} team={activeTeam} />}
-            {activeTab === "coach" && profile.role === "coach" && <CoachDashboard profile={profile} team={activeTeam} />}
-            {activeTab === "program" && profile.role === "coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "createTeam" && profile.role === "coach" && <CreateTeam profile={profile} />}
+
+            {activeTab === "dashboard" &&
+              <Dashboard profile={profile} team={activeTeam} />}
+
+            {activeTab === "deep" && profile.role === "coach" &&
+              <AthleteDeepDive profile={profile} team={activeTeam} />}
+
           </motion.div>
         </AnimatePresence>
-      </div>
-
-      {/* ================= MOBILE BOTTOM NAV ================= */}
-
-      <div className="mobile-nav">
-
-        <div
-          className={`mobile-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
-          onClick={() => setActiveTab("dashboard")}
-        >
-          <div>🏠</div>
-          <small>Home</small>
-        </div>
-
-        <div
-          className={`mobile-nav-item ${activeTab === "workouts" ? "active" : ""}`}
-          onClick={() => setActiveTab("workouts")}
-        >
-          <div>💪</div>
-          <small>Workouts</small>
-        </div>
-
-        <div
-          className={`mobile-nav-item ${activeTab === "progress" ? "active" : ""}`}
-          onClick={() => setActiveTab("progress")}
-        >
-          <div>📈</div>
-          <small>Progress</small>
-        </div>
-
-        {profile.role === "coach" && (
-          <div
-            className={`mobile-nav-item ${activeTab === "coach" ? "active" : ""}`}
-            onClick={() => setActiveTab("coach")}
-          >
-            <div>🧠</div>
-            <small>Coach</small>
-          </div>
-        )}
 
       </div>
-
     </div>
   );
 }

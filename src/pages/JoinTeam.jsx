@@ -7,8 +7,6 @@ import {
   doc,
   getDoc,
   setDoc,
-  updateDoc,
-  arrayUnion,
   serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase";
@@ -55,7 +53,7 @@ export default function JoinTeam({ profile }) {
       const teamId = teamDoc.id;
       const teamData = teamDoc.data();
 
-      const memberRef = doc(
+      const membershipRef = doc(
         db,
         "users",
         profile.uid,
@@ -63,25 +61,19 @@ export default function JoinTeam({ profile }) {
         teamId
       );
 
-      const existingMember = await getDoc(memberRef);
+      const existingMembership = await getDoc(membershipRef);
 
-      if (existingMember.exists()) {
-        alert("Already a member.");
+      if (existingMembership.exists()) {
+        alert("Already a member of this team.");
         setLoading(false);
         return;
       }
 
-      /* ===== ADD TEAM UNDER USER ===== */
+      /* ===== ADD TEAM UNDER USER (ONLY) ===== */
 
-      await setDoc(memberRef, {
+      await setDoc(membershipRef, {
         role: "athlete",
         joinedAt: serverTimestamp()
-      });
-
-      /* ===== UPDATE TEAM MEMBERS ARRAY ===== */
-
-      await updateDoc(doc(db, "teams", teamId), {
-        members: arrayUnion(profile.uid)
       });
 
       setSuccessTeamName(teamData.name);

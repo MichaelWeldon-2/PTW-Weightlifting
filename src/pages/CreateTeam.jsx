@@ -60,14 +60,10 @@ export default function CreateTeam({ profile }) {
         subscriptionStatus: "trial",
         subscriptionTier: "basic",
 
-        organizationId: organizationId || null,
-
-        // 🔥 ADD MEMBERS ARRAY
-        members: [profile.uid]
-
+        organizationId: organizationId || null
       });
 
-      /* ===== ADD TEAM UNDER USER ===== */
+      /* ===== ADD TEAM UNDER USER (SINGLE SOURCE OF TRUTH) ===== */
 
       await setDoc(
         doc(db, "users", profile.uid, "teams", teamId),
