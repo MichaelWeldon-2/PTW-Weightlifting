@@ -336,20 +336,49 @@ export default function App() {
       </div>
 
       {/* MOBILE NAV */}
-      <div className="bottom-nav">
+     <div className="bottom-nav">
 
-        <NavItem label="🏠" onClick={() => setActiveTab("dashboard")} />
-        <NavItem label="💪" onClick={() => setActiveTab("workouts")} />
-        <NavItem label="📈" onClick={() => setActiveTab("progress")} />
+  <NavItem
+    icon="🏠"
+    label="Home"
+    active={activeTab === "dashboard"}
+    onClick={() => setActiveTab("dashboard")}
+  />
 
-        {profile.role === "coach" &&
-          <NavItem label="🧠" onClick={() => setActiveTab("deep")} />}
+  <NavItem
+    icon="💪"
+    label="Workouts"
+    active={activeTab === "workouts"}
+    onClick={() => setActiveTab("workouts")}
+  />
 
-        <NavItem label="👤" onClick={() => setActiveTab("account")} />
+  <NavItem
+    icon="📈"
+    label="Progress"
+    active={activeTab === "progress"}
+    onClick={() => setActiveTab("progress")}
+  />
+
+  {profile.role === "coach" && (
+    <NavItem
+      icon="🧠"
+      label="Analytics"
+      active={activeTab === "deep"}
+      onClick={() => setActiveTab("deep")}
+    />
+  )}
+
+  <NavItem
+    icon="👤"
+    label="Account"
+    active={activeTab === "account"}
+    onClick={() => setActiveTab("account")}
+  />
 
       </div>
 
     </div>
+    
   );
 }
 
@@ -365,10 +394,14 @@ function SidebarItem({ label, onClick }) {
 
 /* ================= BOTTOM NAV ITEM ================= */
 
-function NavItem({ label, onClick }) {
+function NavItem({ icon, label, active, onClick }) {
   return (
-    <div className="bottom-nav-item" onClick={onClick}>
-      {label}
+    <div
+      className={`bottom-nav-item ${active ? "active" : ""}`}
+      onClick={onClick}
+    >
+      <div className="nav-icon">{icon}</div>
+      <div className="nav-label">{label}</div>
     </div>
   );
 }
