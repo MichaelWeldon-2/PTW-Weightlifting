@@ -55,7 +55,6 @@ export default function App() {
   /* ================= LOAD USER TEAMS ================= */
 
   const loadTeams = async (uid) => {
-
     const teamsSnap = await getDocs(
       collection(db, "users", uid, "teams")
     );
@@ -63,7 +62,6 @@ export default function App() {
     const userTeams = [];
 
     for (const docSnap of teamsSnap.docs) {
-
       const teamId = docSnap.id;
       const teamSnap = await getDoc(doc(db, "teams", teamId));
 
@@ -98,7 +96,6 @@ export default function App() {
       }
 
       try {
-
         const snap = await getDoc(doc(db, "users", u.uid));
 
         if (!snap.exists()) {
@@ -220,6 +217,7 @@ export default function App() {
                   teamId = snap.docs[0].id;
                 }
 
+                // 🔥 Create Auth user
                 const cred = await createUserWithEmailAndPassword(
                   auth,
                   email,
@@ -228,6 +226,10 @@ export default function App() {
 
                 const uid = cred.user.uid;
 
+                // 🔥 Force token refresh (critical fix)
+                await cred.user.getIdToken(true);
+
+                // 🔥 Create Firestore profile
                 await setDoc(doc(db, "users", uid), {
                   displayName: displayName.trim(),
                   role: roleChoice,
@@ -287,9 +289,7 @@ export default function App() {
   return (
     <div className="app">
 
-      {/* DESKTOP SIDEBAR */}
       <div className="sidebar">
-
         <h3 style={{ marginBottom: 20 }}>PTW</h3>
 
         <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
@@ -309,7 +309,6 @@ export default function App() {
         <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
       </div>
 
-      {/* CONTENT */}
       <div className="content">
         <AnimatePresence mode="wait">
           <motion.div
@@ -334,36 +333,14 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* MOBILE NAV */}
-      <div className="bottom-nav">
-        <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
-        <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
-        <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
-        {profile.role==="coach" && (
-          <NavItem icon="🧠" label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
-        )}
-        <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
-      </div>
-
     </div>
   );
 }
 
-/* SIDEBAR ITEM */
 function SidebarItem({ label, active, onClick }) {
   return (
     <div className={`sidebar-item ${active ? "active" : ""}`} onClick={onClick}>
       {label}
-    </div>
-  );
-}
-
-/* MOBILE NAV ITEM */
-function NavItem({ icon, label, active, onClick }) {
-  return (
-    <div className={`bottom-nav-item ${active ? "active" : ""}`} onClick={onClick}>
-      <div className="nav-icon">{icon}</div>
-      <div className="nav-label">{label}</div>
     </div>
   );
 }
