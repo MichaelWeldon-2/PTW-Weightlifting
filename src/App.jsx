@@ -46,6 +46,7 @@ export default function App() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
 
   const [isRegistering, setIsRegistering] = useState(false);
   const [roleChoice, setRoleChoice] = useState("athlete");
@@ -54,6 +55,7 @@ export default function App() {
   /* ================= LOAD USER TEAMS ================= */
 
   const loadTeams = async (uid) => {
+
     const teamsSnap = await getDocs(
       collection(db, "users", uid, "teams")
     );
@@ -61,6 +63,7 @@ export default function App() {
     const userTeams = [];
 
     for (const docSnap of teamsSnap.docs) {
+
       const teamId = docSnap.id;
       const teamSnap = await getDoc(doc(db, "teams", teamId));
 
@@ -82,7 +85,9 @@ export default function App() {
   /* ================= AUTH LISTENER ================= */
 
   useEffect(() => {
+
     const unsub = onAuthStateChanged(auth, async (u) => {
+
       setUser(u);
 
       if (!u) {
@@ -93,6 +98,7 @@ export default function App() {
       }
 
       try {
+
         const snap = await getDoc(doc(db, "users", u.uid));
 
         if (!snap.exists()) {
@@ -109,14 +115,17 @@ export default function App() {
       }
 
       setLoadingProfile(false);
+
     });
 
     return () => unsub();
+
   }, []);
 
   /* ================= AUTH SCREEN ================= */
 
   if (!user) {
+
     return (
       <div className="auth-container">
 
@@ -137,6 +146,12 @@ export default function App() {
 
         {isRegistering && (
           <>
+            <input
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              placeholder="Full Name"
+            />
+
             <div style={{ marginTop: 10 }}>
               <label>
                 <input
@@ -161,7 +176,6 @@ export default function App() {
 
             {roleChoice === "athlete" && (
               <input
-                style={{ marginTop: 10 }}
                 value={inviteCode}
                 onChange={e => setInviteCode(e.target.value)}
                 placeholder="Team Invite Code"
@@ -172,9 +186,15 @@ export default function App() {
 
         <button
           onClick={async () => {
+
             try {
 
               if (isRegistering) {
+
+                if (!displayName.trim()) {
+                  alert("Please enter your full name.");
+                  return;
+                }
 
                 let teamId = null;
 
@@ -209,7 +229,7 @@ export default function App() {
                 const uid = cred.user.uid;
 
                 await setDoc(doc(db, "users", uid), {
-                  displayName: email.split("@")[0],
+                  displayName: displayName.trim(),
                   role: roleChoice,
                   teamId: teamId || null,
                   createdAt: serverTimestamp()
@@ -231,13 +251,16 @@ export default function App() {
                 }
 
               } else {
+
                 await signInWithEmailAndPassword(auth, email, password);
+
               }
 
             } catch (err) {
               console.error("Auth error:", err);
               alert(err.message);
             }
+
           }}
         >
           {isRegistering ? "Create Account" : "Login"}
@@ -251,6 +274,7 @@ export default function App() {
             ? "Already have an account? Login"
             : "Don't have an account? Create one"}
         </p>
+
       </div>
     );
   }
@@ -265,6 +289,7 @@ export default function App() {
 
       {/* DESKTOP SIDEBAR */}
       <div className="sidebar">
+
         <h3 style={{ marginBottom: 20 }}>PTW</h3>
 
         <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
@@ -309,7 +334,7 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* MOBILE BOTTOM NAV */}
+      {/* MOBILE NAV */}
       <div className="bottom-nav">
         <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
         <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
@@ -324,27 +349,19 @@ export default function App() {
   );
 }
 
-/* ================= SIDEBAR ================= */
-
+/* SIDEBAR ITEM */
 function SidebarItem({ label, active, onClick }) {
   return (
-    <div
-      className={`sidebar-item ${active ? "active" : ""}`}
-      onClick={onClick}
-    >
+    <div className={`sidebar-item ${active ? "active" : ""}`} onClick={onClick}>
       {label}
     </div>
   );
 }
 
-/* ================= MOBILE NAV ================= */
-
+/* MOBILE NAV ITEM */
 function NavItem({ icon, label, active, onClick }) {
   return (
-    <div
-      className={`bottom-nav-item ${active ? "active" : ""}`}
-      onClick={onClick}
-    >
+    <div className={`bottom-nav-item ${active ? "active" : ""}`} onClick={onClick}>
       <div className="nav-icon">{icon}</div>
       <div className="nav-label">{label}</div>
     </div>
