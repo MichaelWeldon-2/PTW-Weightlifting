@@ -1,55 +1,71 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
+import { motion } from "framer-motion";
+import AnimatedStat from "./AnimatedStat";
 
-function Dashboard({ profile, workouts = [] }) {
+function Dashboard({ profile, workouts = [], team }) {
 
-  /* SAFETY GUARD */
+  const [currentBlock, setCurrentBlock] = useState(null);
+  const [competitionCountdown, setCompetitionCountdown] = useState(null);
+  const [successFlash, setSuccessFlash] = useState(false);
+
+  const isCoach = profile?.role === "coach";
+
   if (!profile) {
     return <div className="loading">Loading dashboard...</div>;
   }
 
-  const isCoach = profile.role === "coach";
+  /* ================= TEAM FATIGUE ================= */
 
-  /* ANALYTICS */
+  const teamFatigue = useMemo(() => {
+
+    if (!workouts.length)
+      return { status: "Stable", failRate: 0 };
+
+    const recent = workouts.slice(-20);
+    const fails = recent.filter(w => w.result === "Fail").length;
+    const failRate = fails / recent.length;
+
+    if (failRate >= 0.5) return { status: "Critical", failRate };
+    if (failRate >= 0.3) return { status: "Warning", failRate };
+
+    return { status: "Stable", failRate };
+
+  }, [workouts]);
+
+  /* ================= ANALYTICS ================= */
+
   const analytics = useMemo(() => {
 
-    if (!Array.isArray(workouts) || workouts.length === 0) {
-      return {
-        topPerformer: null,
-        mostImproved: null,
-        totalVolume: 0
-      };
-    }
+    if (!workouts.length)
+      return { topPerformer: null, mostImproved: null, totalVolume: 0 };
 
     const grouped = {};
+    let totalVolume = 0;
 
     workouts.forEach(w => {
-      if (!grouped[w.athleteName]) {
+      if (!grouped[w.athleteName])
         grouped[w.athleteName] = [];
-      }
-      grouped[w.athleteName].push(w);
+
+      const weight = Number(w.weight) || 0;
+      grouped[w.athleteName].push(weight);
+      totalVolume += weight;
     });
 
     const leaders = [];
     const improvements = [];
-    let totalVolume = 0;
 
-    Object.keys(grouped).forEach(name => {
-      const lifts = grouped[name];
-      const weights = lifts.map(l => l.weight || 0);
-
+    Object.entries(grouped).forEach(([name, weights]) => {
       const max = Math.max(...weights);
       const min = Math.min(...weights);
 
-      const improvement = max - min;
-
       leaders.push({ name, max });
-      improvements.push({ name, improvement });
-
-      totalVolume += weights.reduce((a, b) => a + b, 0);
+      improvements.push({ name, improvement: max - min });
     });
 
-    leaders.sort((a, b) => b.max - a.max);
-    improvements.sort((a, b) => b.improvement - a.improvement);
+    leaders.sort((a,b)=>b.max-a.max);
+    improvements.sort((a,b)=>b.improvement-a.improvement);
 
     return {
       topPerformer: leaders[0] || null,
@@ -59,38 +75,159 @@ function Dashboard({ profile, workouts = [] }) {
 
   }, [workouts]);
 
+  /* ================= LOAD PROGRAM ================= */
+
+  useEffect(() => {
+
+    if (!team?.id) return;
+
+    const loadProgram = async () => {
+
+      const snap = await getDoc(doc(db, "teamPrograms", team.id));
+      if (!snap.exists()) return;
+
+      const program = snap.data();
+
+      if (program.competitionDate) {
+        const diff = Math.ceil(
+          (new Date(program.competitionDate) - new Date()) /
+          (1000 * 60 * 60 * 24)
+        );
+        setCompetitionCountdown(diff > 0 ? diff : 0);
+      }
+
+      const currentWeek = team.currentWeek;
+
+      program.blocks?.forEach(block => {
+        if (
+          currentWeek >= block.startWeek &&
+          currentWeek <= block.endWeek
+        ) {
+          setCurrentBlock(block);
+        }
+      });
+    };
+
+    loadProgram();
+
+  }, [team?.id, team?.currentWeek]);
+
+  /* ================= ADVANCE WEEK ================= */
+
+  const advanceWeek = async () => {
+
+    if (!team?.id) return;
+
+    let nextType = "Normal";
+
+    if (teamFatigue.status === "Critical")
+      nextType = "Deload";
+
+    if (competitionCountdown !== null && competitionCountdown <= 7)
+      nextType = "Taper";
+
+    await setDoc(
+      doc(db, "teams", team.id),
+      {
+        currentWeek: team.currentWeek + 1,
+        trainingDayType: nextType
+      },
+      { merge: true }
+    );
+
+    setSuccessFlash(true);
+    setTimeout(() => setSuccessFlash(false), 800);
+  };
+
+  const fatigueClass =
+    teamFatigue.status === "Critical"
+      ? "status-critical"
+      : teamFatigue.status === "Warning"
+      ? "status-warning"
+      : "status-stable";
+
+  /* ================= RENDER ================= */
+
   return (
     <div>
 
-      <h2>Dashboard</h2>
+      <div className="hero-header">
+        <div className="hero-overlay">
+          <h1>{team?.name || "Team Dashboard"}</h1>
+          <p>
+            {team?.currentSeason} • {team?.currentBlock} • Week {team?.currentWeek}
+          </p>
+        </div>
+      </div>
+
+      {competitionCountdown !== null && (
+        <div className="competition-banner">
+          Competition in <AnimatedStat value={competitionCountdown} /> days
+        </div>
+      )}
 
       <div className="dashboard-grid">
 
-        <div className="card">
+        <AnimatedCard>
           <h3>Top Performer</h3>
-          <p>{analytics.topPerformer?.name || "N/A"}</p>
-        </div>
+          <div className="metric-value">
+            {analytics.topPerformer?.name || "N/A"}
+          </div>
+        </AnimatedCard>
 
-        <div className="card">
+        <AnimatedCard>
           <h3>Most Improved</h3>
-          <p>{analytics.mostImproved?.name || "N/A"}</p>
-        </div>
+          <div className="metric-value">
+            {analytics.mostImproved?.name || "N/A"}
+          </div>
+        </AnimatedCard>
 
-        <div className="card">
-          <h3>Total Team Volume</h3>
-          <p>{analytics.totalVolume.toLocaleString()} lbs</p>
-        </div>
+        <AnimatedCard>
+          <h3>Total Volume</h3>
+          <div className="metric-value">
+            <AnimatedStat value={analytics.totalVolume} /> lbs
+          </div>
+        </AnimatedCard>
+
+        <AnimatedCard>
+          <h3>Team Fatigue</h3>
+          <span className={`status-chip ${fatigueClass}`}>
+            {teamFatigue.status}
+          </span>
+          <div style={{ marginTop: 8 }}>
+            <AnimatedStat value={Math.round(teamFatigue.failRate * 100)} />%
+          </div>
+        </AnimatedCard>
 
       </div>
 
       {isCoach && (
-        <div className="card">
-          <h3>Coach Overview</h3>
-          <p>You have full team visibility.</p>
-        </div>
+        <motion.div
+          className={`card ${successFlash ? "success-flash" : ""}`}
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h3>Season Controls</h3>
+          <button onClick={advanceWeek}>
+            Advance Week
+          </button>
+        </motion.div>
       )}
 
     </div>
+  );
+}
+
+function AnimatedCard({ children }) {
+  return (
+    <motion.div
+      className="card metric-card"
+      initial={{ opacity: 0, y: 25 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
+      {children}
+    </motion.div>
   );
 }
 

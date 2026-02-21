@@ -20,6 +20,7 @@ export default function Workouts({ profile }) {
   const [teamContext, setTeamContext] = useState(null);
   const [seasonMax, setSeasonMax] = useState(null);
   const [recommendedWeight, setRecommendedWeight] = useState(null);
+  const [teamProgram, setTeamProgram] = useState(null);
 
   const [selectedAthlete, setSelectedAthlete] = useState("");
   const [exercise, setExercise] = useState("Bench");
@@ -48,6 +49,19 @@ export default function Workouts({ profile }) {
     };
 
     loadTeam();
+  }, [profile?.teamId]);
+
+  /* ================= LOAD TEAM PROGRAM (PHASE 4H) ================= */
+
+  useEffect(() => {
+    if (!profile?.teamId) return;
+
+    const loadProgram = async () => {
+      const snap = await getDoc(doc(db, "teamPrograms", profile.teamId));
+      if (snap.exists()) setTeamProgram(snap.data());
+    };
+
+    loadProgram();
   }, [profile?.teamId]);
 
   /* ================= LOAD ATHLETES ================= */
@@ -102,63 +116,73 @@ export default function Workouts({ profile }) {
 
   }, [selectedAthlete, profile]);
 
-  /* ================= ADAPTIVE RECOMMEND ENGINE (PHASE 4C) ================= */
+  /* ================= PHASE 4H + 4C RECOMMEND ENGINE ================= */
 
-useEffect(() => {
+  useEffect(() => {
 
-  if (!seasonMax || !teamContext || workoutType !== "Workout") {
-    setRecommendedWeight(null);
-    return;
-  }
+    if (!seasonMax || !teamContext || !teamProgram || workoutType !== "Workout") {
+      setRecommendedWeight(null);
+      return;
+    }
 
-  let basePercent = 0.75;
+    const currentWeek = teamContext.currentWeek;
 
-  if (teamContext.trainingDayType === "Max") basePercent = 0.9;
-  if (teamContext.trainingDayType === "Deload") basePercent = 0.6;
+    let basePercent = 0;
 
-  let maxLift = 0;
+    // 🔥 Get block % from AI program
+    for (let block of teamProgram.blocks) {
+      if (currentWeek >= block.startWeek && currentWeek <= block.endWeek) {
+        const weeklyTarget = block.weeklyTargets[currentWeek];
+        if (weeklyTarget) {
+          if (exercise === "Bench") basePercent = weeklyTarget.bench / 100;
+          if (exercise === "Squat") basePercent = weeklyTarget.squat / 100;
+          if (exercise === "PowerClean") basePercent = weeklyTarget.powerClean / 100;
+        }
+      }
+    }
 
-  if (exercise === "Bench") maxLift = seasonMax.bench || 0;
-  if (exercise === "Squat") maxLift = seasonMax.squat || 0;
-  if (exercise === "PowerClean") maxLift = seasonMax.powerClean || 0;
+    if (!basePercent) return;
 
-  if (!maxLift) return;
+    let maxLift = 0;
+    if (exercise === "Bench") maxLift = seasonMax.bench || 0;
+    if (exercise === "Squat") maxLift = seasonMax.squat || 0;
+    if (exercise === "PowerClean") maxLift = seasonMax.powerClean || 0;
 
-  let adjustment = 0;
+    if (!maxLift) return;
 
-  /* ===== RISK ADJUSTMENT ===== */
+    let adjustment = 0;
 
-  const failRate = seasonMax.failRate || 0; // optional future tracking
-  const riskStatus = seasonMax.riskStatus || "Stable"; // optional future
+    const failRate = seasonMax.failRate || 0;
+    const riskStatus = seasonMax.riskStatus || "Stable";
 
-  if (riskStatus === "Warning") adjustment -= 0.05;
-  if (riskStatus === "Critical") adjustment -= 0.10;
-
-  if (failRate >= 0.5) adjustment -= 0.05;
-
-  /* ===== TREND CHECK (DECLINING) ===== */
-
-  if (seasonMax.trend === "Declining") {
-    adjustment -= 0.05;
-  }
-
-  /* ===== FINAL PERCENT ===== */
+    if (riskStatus === "Warning") adjustment -= 0.05;
+    if (riskStatus === "Critical") adjustment -= 0.10;
+    if (failRate >= 0.5) adjustment -= 0.05;
+    if (seasonMax.trend === "Declining") adjustment -= 0.05;
 
   let finalPercent = basePercent + adjustment;
 
-  // Safety bounds
-  if (finalPercent > 0.95) finalPercent = 0.95;
-  if (finalPercent < 0.5) finalPercent = 0.5;
+  // 🔥 Peak Optimizer Adjustments
+  if (teamContext.trainingDayType === "Taper") {
+    finalPercent -= 0.05;
+  }
 
-  const calculated =
-    Math.round((maxLift * finalPercent) / 5) * 5;
+  if (teamContext.trainingDayType === "Competition") {
+    finalPercent = Math.min(finalPercent + 0.05, 1.0);
+    if (teamContext.trainingDayType === "Taper") {
+      // reduce volume by recommending lighter loads
+      setRecommendedWeight(
+        Math.round((recommendedWeight * 0.9) / 5) * 5
+      );
+    }
+  }
 
-  setRecommendedWeight(calculated);
-  setWeight(calculated);
+  const recommendedValue = Math.round(maxLift * finalPercent / 5) * 5;
+  setRecommendedWeight(recommendedValue);
 
-}, [seasonMax, teamContext, exercise, workoutType]);
+}, [seasonMax, teamContext, teamProgram, workoutType, exercise]);
 
-  /* ================= SAVE WORKOUT ================= */
+/* ================= SAVE WORKOUT ================= */
 
   const saveWorkout = async () => {
 
@@ -300,7 +324,10 @@ useEffect(() => {
 
           {recommendedWeight && (
             <div className="recommendation-box">
-              💡 Recommended: {recommendedWeight} lbs
+              💡 AI Recommended: {recommendedWeight} lbs
+              <small style={{ display: "block", opacity: 0.7 }}>
+                Block-based + adaptive adjustment
+              </small>
             </div>
           )}
 
@@ -309,35 +336,6 @@ useEffect(() => {
               <option key={w} value={w}>{w} lbs</option>
             ))}
           </select>
-          
-{recommendedWeight && (
-  <div className="recommendation-box">
-    💡 Recommended: {recommendedWeight} lbs
-    <small style={{ display: "block", opacity: 0.7 }}>
-      Adaptive load based on performance
-    </small>
-  </div>
-)}
-
-          {exercise !== "Squat" && (
-            <select value={box} onChange={e => setBox(e.target.value)}>
-              {boxes.map(b => (
-                <option key={b} value={b}>
-                  {b === "Max" ? "Max" : `Box ${b}`}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {exercise === "Squat" && (
-            <select value={percentage} onChange={e => setPercentage(e.target.value)}>
-              {percentages.map(p => (
-                <option key={p} value={p}>
-                  {p === "Max" ? "Max" : `${p}%`}
-                </option>
-              ))}
-            </select>
-          )}
 
           <select value={result} onChange={e => setResult(e.target.value)}>
             <option>Pass</option>

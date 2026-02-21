@@ -1,50 +1,56 @@
 import { useEffect, useState, useMemo } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  collection,
+  query,
+  where,
+  onSnapshot
+} from "firebase/firestore";
 import { db } from "../firebase";
 
-export default function AthleteDeepDive({ profile }) {
+export default function AthleteDeepDive({ team }) {
 
   const [athletes, setAthletes] = useState([]);
   const [selected, setSelected] = useState("");
   const [workouts, setWorkouts] = useState([]);
 
-  /* ================= LOAD ATHLETES ================= */
+  /* ===== LOAD ATHLETES FROM TEAM MEMBERS ARRAY ===== */
 
   useEffect(() => {
 
-    if (!profile?.teamId) return;
+  if (!team?.id) return;
 
-    const q = query(
-      collection(db, "users"),
-      where("teamId", "==", profile.teamId),
-      where("role", "==", "athlete")
+  const q = query(
+    collection(db, "users"),
+    where("role", "==", "athlete")
+  );
+
+  const unsub = onSnapshot(q, snap => {
+    setAthletes(
+      snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }))
     );
+  });
 
-    const unsub = onSnapshot(q, snap => {
-      setAthletes(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
-    });
+  return () => unsub();
 
-    return () => unsub();
+}, [team?.id]);
 
-  }, [profile?.teamId]);
-
-  /* ================= LOAD WORKOUTS ================= */
+  /* ===== LOAD WORKOUTS ===== */
 
   useEffect(() => {
 
-    if (!selected || !profile?.teamId) {
+    if (!selected || !team?.id) {
       setWorkouts([]);
       return;
     }
 
     const q = query(
       collection(db, "workouts"),
-      where("teamId", "==", profile.teamId),
+      where("teamId", "==", team.id),
       where("athleteId", "==", selected)
     );
 
@@ -55,13 +61,13 @@ export default function AthleteDeepDive({ profile }) {
           ...d.data()
         }))
       );
-    }, (error) => {
-      console.error("Workout snapshot error:", error);
     });
 
     return () => unsub();
 
-  }, [selected, profile?.teamId]);
+  }, [selected, team]);
+
+  /* ===== KEEP YOUR EXISTING ANALYTICS LOGIC BELOW THIS ===== */
 
   /* ================= ANALYTICS ================= */
 
