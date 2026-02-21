@@ -31,7 +31,6 @@ import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
 import Account from "./pages/Account";
-import { Analytics } from "@vercel/analytics/react";
 import "./App.css";
 
 export default function App() {
@@ -328,10 +327,7 @@ export default function App() {
 
           </motion.div>
         </AnimatePresence>
-
-    </div>
-    {/* 🔥 ADD THIS LINE RIGHT HERE */}
-    <Analytics />
+      </div>
 
     {/* MOBILE BOTTOM NAV */}
     <div className="bottom-nav">
