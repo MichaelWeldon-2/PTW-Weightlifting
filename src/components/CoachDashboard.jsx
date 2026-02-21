@@ -300,3 +300,10 @@ function Metric({ label, value }) {
     </div>
   );
 }
+const promoteToAssistant = async (teamId, userId) => {
+  await setDoc(
+    doc(db, "teamMembers", teamId, "members", userId),
+    { role: "assistant" },
+    { merge: true }
+  );
+};
