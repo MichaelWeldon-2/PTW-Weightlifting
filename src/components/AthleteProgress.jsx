@@ -127,7 +127,7 @@ export default function AthleteProgress({ profile, team }) {
 
       <h2>Performance Trends</h2>
 
-      {profile.role === "coach" && (
+      {profile?.role === "coach" && (
         <select
           value={selectedAthlete}
           onChange={e => setSelectedAthlete(e.target.value)}

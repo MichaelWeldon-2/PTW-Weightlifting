@@ -28,7 +28,7 @@ export default function CoachNotes({
 
     let q;
 
-    if (profile.role === "coach") {
+    if (profile?.role === "coach") {
       q = query(
         collection(db, "coachNotes"),
         where("userId", "==", profile.uid),
@@ -81,7 +81,7 @@ export default function CoachNotes({
     <div className="card">
       <h2>Coach Notes</h2>
 
-      {profile.role === "coach" && (
+      {profile?.role === "coach" && (
         <>
           <select
             value={selectedAthlete}
@@ -113,7 +113,7 @@ export default function CoachNotes({
             <strong>{n.athleteName}</strong>
             <p>{n.note}</p>
 
-            {profile.role === "coach" && (
+            {profile?.role === "coach" && (
               <button
                 className="btn-danger"
                 onClick={() => deleteNote(n.id)}

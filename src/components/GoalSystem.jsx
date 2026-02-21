@@ -19,7 +19,7 @@ export default function Goals({ profile }) {
 
     let q;
 
-    if (profile.role === "coach") {
+    if (profile?.role === "coach") {
       q = collection(db, "goals");
     } else {
       q = query(

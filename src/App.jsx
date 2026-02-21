@@ -248,9 +248,13 @@ export default function App() {
           }
         );
 
-        await updateDoc(doc(db, "teams", teamId), {
+        await setDoc(
+          doc(db, "teams", teamId),
+          {
           members: arrayUnion(uid)
-        });
+        },
+        {merge: true}
+      );
       }
 
     } else {
@@ -288,7 +292,7 @@ export default function App() {
         <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
         <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
 
-        {profile.role === "coach" && (
+        {profile?.role === "coach" && (
           <>
             <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
             <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
@@ -314,10 +318,10 @@ export default function App() {
             {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
             {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
             {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
-            {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
-            {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
-            {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
+            {activeTab === "deep" && profile?.role==="coach" && <AthleteDeepDive team={activeTeam} />}
+            {activeTab === "coach" && profile?.role==="coach" && <CoachDashboard team={activeTeam} />}
+            {activeTab === "program" && profile?.role==="coach" && <ProgramBuilder team={activeTeam} />}
+            {activeTab === "createTeam" && profile?.role==="coach" && <CreateTeam profile={profile} />}
             {activeTab === "account" && <Account profile={profile} />}
 
           </motion.div>

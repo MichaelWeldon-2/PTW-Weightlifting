@@ -67,7 +67,7 @@ export default function Workouts({ profile, team }) {
   const saveWorkout = async () => {
 
     const athleteId =
-      profile.role === "coach"
+      profile?.role === "coach"
         ? selectedAthlete
         : profile.uid;
 
@@ -90,7 +90,7 @@ export default function Workouts({ profile, team }) {
       setSuccessFlash(true);
       setTimeout(() => setSuccessFlash(false), 800);
 
-      if (profile.role === "coach") {
+      if (profile?.role === "coach") {
         setSelectedAthlete("");
       }
 
@@ -106,7 +106,7 @@ export default function Workouts({ profile, team }) {
 
       <h2>Log Workout</h2>
 
-      {profile.role === "coach" && (
+      {profile?.role === "coach" && (
         <select
           value={selectedAthlete}
           onChange={e => setSelectedAthlete(e.target.value)}

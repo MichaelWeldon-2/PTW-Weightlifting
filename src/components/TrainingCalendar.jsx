@@ -81,7 +81,7 @@ export default function TrainingCalendar({ profile }) {
         </select>
       </div>
 
-      {profile.role === "coach" && (
+      {profile?.role === "coach" && (
         <div style={{ marginTop: 20 }}>
           <input
             type="date"
@@ -117,7 +117,7 @@ export default function TrainingCalendar({ profile }) {
           <h4>{e.title}</h4>
           <p>{e.description}</p>
 
-          {profile.role === "coach" && (
+          {profile?.role === "coach" && (
             <button
               className="btn-danger"
               onClick={() => deleteEvent(e.id)}
