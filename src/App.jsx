@@ -31,7 +31,7 @@ import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
 import Account from "./pages/Account";
-
+import { Analytics } from "@vercel/analytics/next"
 import "./App.css";
 
 export default function App() {
