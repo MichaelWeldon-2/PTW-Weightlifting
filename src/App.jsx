@@ -30,7 +30,7 @@ import CoachDashboard from "./components/CoachDashboard";
 import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
-import Account from "./pages/Account";
+import Account from "./components/Account";
 import "./App.css";
 
 export default function App() {
