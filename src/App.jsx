@@ -31,7 +31,7 @@ import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
 import Account from "./pages/Account";
-import { Analytics } from "@vercel/analytics/next"
+import { Analytics } from "@vercel/analytics/react";
 import "./App.css";
 
 export default function App() {
@@ -329,23 +329,26 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
 
-      </div>
-{/* MOBILE BOTTOM NAV */}
-<div className="bottom-nav">
-
-  <NavItem label="🏠" onClick={() => setActiveTab("dashboard")} />
-  <NavItem label="💪" onClick={() => setActiveTab("workouts")} />
-  <NavItem label="📈" onClick={() => setActiveTab("progress")} />
-  
-  {profile.role === "coach" && (
-    <NavItem label="🧠" onClick={() => setActiveTab("deep")} />
-  )}
-
-  <NavItem label="👤" onClick={() => setActiveTab("account")} />
-
-</div>
     </div>
-  );
+    {/* 🔥 ADD THIS LINE RIGHT HERE */}
+    <Analytics />
+
+    {/* MOBILE BOTTOM NAV */}
+    <div className="bottom-nav">
+
+      <NavItem label="🏠" onClick={() => setActiveTab("dashboard")} />
+      <NavItem label="💪" onClick={() => setActiveTab("workouts")} />
+      <NavItem label="📈" onClick={() => setActiveTab("progress")} />
+      
+      {profile.role === "coach" && (
+        <NavItem label="🧠" onClick={() => setActiveTab("deep")} />
+      )}
+
+      <NavItem label="👤" onClick={() => setActiveTab("account")} />
+
+    </div>
+  </div>
+);
 }
 
 function NavItem({ label, onClick }) {
