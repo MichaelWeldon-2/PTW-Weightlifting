@@ -182,107 +182,98 @@ export default function App() {
         )}
 
         <button
-          onClick={async () => {
+         onClick={async () => {
+  try {
 
-            try {
+    if (isRegistering) {
 
-              if (isRegistering) {
+      if (!displayName.trim()) {
+        alert("Please enter your full name.");
+        return;
+      }
 
-                if (!displayName.trim()) {
-                  alert("Please enter your full name.");
-                  return;
-                }
+      let teamId = null;
 
-                let teamId = null;
+      if (roleChoice === "athlete") {
 
-                if (roleChoice === "athlete") {
+        if (!inviteCode.trim()) {
+          alert("Invite code required.");
+          return;
+        }
 
-                  if (!inviteCode.trim()) {
-                    alert("Invite code required.");
-                    return;
-                  }
+        const q = query(
+          collection(db, "teams"),
+          where("inviteCode", "==", inviteCode.trim().toUpperCase())
+        );
 
-                  const q = query(
-                    collection(db, "teams"),
-                    where("inviteCode", "==", inviteCode.trim().toUpperCase())
-                  );
+        const snap = await getDocs(q);
 
-                  const snap = await getDocs(q);
+        if (snap.empty) {
+          alert("Invalid invite code.");
+          return;
+        }
 
-                  if (snap.empty) {
-                    alert("Invalid invite code.");
-                    return;
-                  }
+        teamId = snap.docs[0].id;
+      }
 
-                  teamId = snap.docs[0].id;
-                }
+      // 1️⃣ Create Auth account
+      await createUserWithEmailAndPassword(auth, email, password);
 
-                // 🔥 Create Auth user
-                const cred = await createUserWithEmailAndPassword(
-                  auth,
-                  email,
-                  password
-                );
+      // 2️⃣ Wait for auth state to be ready
+      const currentUser = auth.currentUser;
 
-                const uid = cred.user.uid;
+      if (!currentUser) {
+        alert("Authentication failed. Try again.");
+        return;
+      }
 
-                // 🔥 Force token refresh (critical fix)
-                await cred.user.getIdToken(true);
+      const uid = currentUser.uid;
 
-                // 🔥 Create Firestore profile
-                await setDoc(doc(db, "users", uid), {
-                  displayName: displayName.trim(),
-                  role: roleChoice,
-                  teamId: teamId || null,
-                  createdAt: serverTimestamp()
-                });
+      // 3️⃣ Create user profile in Firestore
+      await setDoc(doc(db, "users", uid), {
+        displayName: displayName.trim(),
+        role: roleChoice,
+        teamId: teamId || null,
+        createdAt: serverTimestamp()
+      });
 
-                if (roleChoice === "athlete" && teamId) {
+      // 4️⃣ If athlete → join team
+      if (roleChoice === "athlete" && teamId) {
 
-                  await setDoc(
-                    doc(db, "users", uid, "teams", teamId),
-                    {
-                      role: "athlete",
-                      joinedAt: serverTimestamp()
-                    }
-                  );
+        await setDoc(
+          doc(db, "users", uid, "teams", teamId),
+          {
+            role: "athlete",
+            joinedAt: serverTimestamp()
+          }
+        );
 
-                  await updateDoc(doc(db, "teams", teamId), {
-                    members: arrayUnion(uid)
-                  });
-                }
+        await updateDoc(doc(db, "teams", teamId), {
+          members: arrayUnion(uid)
+        });
+      }
 
-              } else {
+    } else {
 
-                await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email, password);
 
-              }
+    }
 
-            } catch (err) {
-              console.error("Auth error:", err);
-              alert(err.message);
-            }
-
-          }}
+  } catch (err) {
+    console.error("Auth error:", err);
+    alert(err.message);
+  }
+}}
         >
-          {isRegistering ? "Create Account" : "Login"}
+          {isRegistering ? "Register" : "Sign In"}
         </button>
 
-        <p
-          style={{ marginTop: 15, cursor: "pointer", opacity: 0.7 }}
-          onClick={() => setIsRegistering(prev => !prev)}
-        >
-          {isRegistering
-            ? "Already have an account? Login"
-            : "Don't have an account? Create one"}
-        </p>
-
+        <button onClick={() => setIsRegistering(!isRegistering)}>
+          {isRegistering ? "Already have an account? Sign In" : "Need an account? Register"}
+        </button>
       </div>
     );
   }
-
-  if (loadingProfile) return <div className="loading">Loading profile...</div>;
-  if (!profile) return <div className="loading">Profile not found.</div>;
 
   /* ================= MAIN APP ================= */
 
