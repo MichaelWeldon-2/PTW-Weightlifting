@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut
+  onAuthStateChanged
 } from "firebase/auth";
 
 import {
@@ -14,7 +13,9 @@ import {
   collection,
   query,
   where,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc,
+  arrayUnion
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
@@ -29,6 +30,7 @@ import CoachDashboard from "./components/CoachDashboard";
 import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
+import Account from "./pages/Account";
 
 import "./App.css";
 
@@ -63,7 +65,6 @@ export default function App() {
     for (const docSnap of teamsSnap.docs) {
 
       const teamId = docSnap.id;
-
       const teamSnap = await getDoc(doc(db, "teams", teamId));
 
       if (teamSnap.exists()) {
@@ -98,8 +99,7 @@ export default function App() {
 
       try {
 
-        const userRef = doc(db, "users", u.uid);
-        const snap = await getDoc(userRef);
+        const snap = await getDoc(doc(db, "users", u.uid));
 
         if (!snap.exists()) {
           setLoadingProfile(false);
@@ -107,7 +107,6 @@ export default function App() {
         }
 
         setProfile({ uid: u.uid, ...snap.data() });
-
         await loadTeams(u.uid);
 
       } catch (err) {
@@ -116,23 +115,15 @@ export default function App() {
       }
 
       setLoadingProfile(false);
-
     });
 
     return () => unsub();
 
   }, []);
 
-  const logout = async () => {
-    await signOut(auth);
-    setProfile(null);
-    setActiveTeam(null);
-  };
-
   /* ================= AUTH SCREEN ================= */
 
   if (!user) {
-
     return (
       <div className="auth-container">
 
@@ -193,11 +184,6 @@ export default function App() {
 
               if (isRegistering) {
 
-                if (roleChoice === "athlete" && !inviteCode.trim()) {
-                  alert("Invite code required.");
-                  return;
-                }
-
                 const cred = await createUserWithEmailAndPassword(
                   auth,
                   email,
@@ -206,7 +192,11 @@ export default function App() {
 
                 const uid = cred.user.uid;
 
-                let teamId = null;
+                await setDoc(doc(db, "users", uid), {
+                  displayName: email.split("@")[0],
+                  role: roleChoice,
+                  createdAt: serverTimestamp()
+                });
 
                 if (roleChoice === "athlete") {
 
@@ -218,21 +208,11 @@ export default function App() {
                   const snap = await getDocs(q);
 
                   if (snap.empty) {
-                    await cred.user.delete();
                     alert("Invalid invite code.");
                     return;
                   }
 
-                  teamId = snap.docs[0].id;
-                }
-
-                await setDoc(doc(db, "users", uid), {
-                  displayName: email.split("@")[0],
-                  role: roleChoice,
-                  createdAt: serverTimestamp()
-                });
-
-                if (roleChoice === "athlete" && teamId) {
+                  const teamId = snap.docs[0].id;
 
                   await setDoc(
                     doc(db, "users", uid, "teams", teamId),
@@ -241,6 +221,10 @@ export default function App() {
                       joinedAt: serverTimestamp()
                     }
                   );
+
+                  await updateDoc(doc(db, "teams", teamId), {
+                    members: arrayUnion(uid)
+                  });
                 }
 
               } else {
@@ -272,19 +256,38 @@ export default function App() {
     );
   }
 
-  if (loadingProfile) {
-    return <div className="loading">Loading profile...</div>;
-  }
-
-  if (!profile) {
-    return <div className="loading">Profile not found.</div>;
-  }
+  if (loadingProfile) return <div className="loading">Loading profile...</div>;
+  if (!profile) return <div className="loading">Profile not found.</div>;
 
   /* ================= MAIN APP ================= */
 
   return (
     <div className="app">
 
+      {/* SIDEBAR */}
+      <div className="sidebar">
+
+        <h3 style={{ marginBottom: 20 }}>PTW</h3>
+
+        <SidebarItem label="Dashboard" onClick={() => setActiveTab("dashboard")} />
+        <SidebarItem label="Workouts" onClick={() => setActiveTab("workouts")} />
+        <SidebarItem label="Progress" onClick={() => setActiveTab("progress")} />
+        <SidebarItem label="Leaderboard" onClick={() => setActiveTab("leaderboard")} />
+
+        {profile.role === "coach" && (
+          <>
+            <SidebarItem label="Coach" onClick={() => setActiveTab("coach")} />
+            <SidebarItem label="Athlete Analytics" onClick={() => setActiveTab("deep")} />
+            <SidebarItem label="Program Builder" onClick={() => setActiveTab("program")} />
+            <SidebarItem label="Create Team" onClick={() => setActiveTab("createTeam")} />
+          </>
+        )}
+
+        <SidebarItem label="Account" onClick={() => setActiveTab("account")} />
+
+      </div>
+
+      {/* CONTENT */}
       <div className="content">
 
         <AnimatePresence mode="wait">
@@ -293,18 +296,65 @@ export default function App() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.25 }}
           >
 
             {activeTab === "dashboard" &&
               <Dashboard profile={profile} team={activeTeam} />}
 
+            {activeTab === "workouts" &&
+              <Workouts profile={profile} team={activeTeam} />}
+
+            {activeTab === "progress" &&
+              <AthleteProgress profile={profile} team={activeTeam} />}
+
+            {activeTab === "leaderboard" &&
+              <Leaderboard profile={profile} team={activeTeam} />}
+
             {activeTab === "deep" && profile.role === "coach" &&
-              <AthleteDeepDive profile={profile} team={activeTeam} />}
+              <AthleteDeepDive team={activeTeam} />}
+
+            {activeTab === "coach" && profile.role === "coach" &&
+              <CoachDashboard team={activeTeam} />}
+
+            {activeTab === "program" && profile.role === "coach" &&
+              <ProgramBuilder team={activeTeam} />}
+
+            {activeTab === "createTeam" && profile.role === "coach" &&
+              <CreateTeam profile={profile} />}
+
+            {activeTab === "account" &&
+              <Account profile={profile} />}
 
           </motion.div>
         </AnimatePresence>
 
       </div>
+{/* MOBILE BOTTOM NAV */}
+<div className="bottom-nav">
+
+  <NavItem label="🏠" onClick={() => setActiveTab("dashboard")} />
+  <NavItem label="💪" onClick={() => setActiveTab("workouts")} />
+  <NavItem label="📈" onClick={() => setActiveTab("progress")} />
+  
+  {profile.role === "coach" && (
+    <NavItem label="🧠" onClick={() => setActiveTab("deep")} />
+  )}
+
+  <NavItem label="👤" onClick={() => setActiveTab("account")} />
+
+</div>
+    </div>
+  );
+}
+
+function NavItem({ label, onClick }) {
+  return (
+    <div
+      className="bottom-nav-item"
+      onClick={onClick}
+    >
+      {label}
     </div>
   );
 }

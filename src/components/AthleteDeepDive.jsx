@@ -5,7 +5,8 @@ import {
   collection,
   query,
   where,
-  onSnapshot
+  onSnapshot,
+  documentId
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -15,31 +16,62 @@ export default function AthleteDeepDive({ team }) {
   const [selected, setSelected] = useState("");
   const [workouts, setWorkouts] = useState([]);
 
-  /* ===== LOAD ATHLETES FROM TEAM MEMBERS ARRAY ===== */
+  /* ================= LOAD TEAM ATHLETES (OPTIMIZED) ================= */
 
   useEffect(() => {
 
-  if (!team?.id) return;
+    if (!team?.id || !team?.members?.length) {
+      setAthletes([]);
+      return;
+    }
 
-  const q = query(
-    collection(db, "users"),
-    where("role", "==", "athlete")
-  );
+    const loadAthletes = async () => {
 
-  const unsub = onSnapshot(q, snap => {
-    setAthletes(
-      snap.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }))
-    );
-  });
+      try {
 
-  return () => unsub();
+        const memberIds = team.members;
 
-}, [team?.id]);
+        // Firestore "in" query limit = 10
+        const chunks = [];
+        for (let i = 0; i < memberIds.length; i += 10) {
+          chunks.push(memberIds.slice(i, i + 10));
+        }
 
-  /* ===== LOAD WORKOUTS ===== */
+        const results = [];
+
+        for (let chunk of chunks) {
+          const q = query(
+            collection(db, "users"),
+            where(documentId(), "in", chunk)
+          );
+
+          const unsub = onSnapshot(q, snap => {
+            snap.docs.forEach(docSnap => {
+              const data = docSnap.data();
+              if (data.role === "athlete") {
+                results.push({
+                  id: docSnap.id,
+                  ...data
+                });
+              }
+            });
+
+            setAthletes([...results]);
+          });
+
+          return () => unsub();
+        }
+
+      } catch (err) {
+        console.error("Athlete load error:", err);
+      }
+    };
+
+    loadAthletes();
+
+  }, [team]);
+
+  /* ================= LOAD WORKOUTS ================= */
 
   useEffect(() => {
 
@@ -67,9 +99,7 @@ export default function AthleteDeepDive({ team }) {
 
   }, [selected, team]);
 
-  /* ===== KEEP YOUR EXISTING ANALYTICS LOGIC BELOW THIS ===== */
-
-  /* ================= ANALYTICS ================= */
+  /* ================= ANALYTICS ENGINE (UNCHANGED) ================= */
 
   const analytics = useMemo(() => {
 
@@ -124,8 +154,6 @@ export default function AthleteDeepDive({ team }) {
         ? (totalAttempts - totalPass) / totalAttempts
         : 0;
 
-    /* ===== Plateau Detection ===== */
-
     const plateaus = [];
 
     Object.entries(liftMap).forEach(([exercise, weights]) => {
@@ -139,8 +167,6 @@ export default function AthleteDeepDive({ team }) {
         }
       }
     });
-
-    /* ===== Fatigue Detection ===== */
 
     let fatigue = false;
 
@@ -156,8 +182,6 @@ export default function AthleteDeepDive({ team }) {
       }
     }
 
-    /* ===== Risk Level ===== */
-
     let riskScore = 0;
 
     if (failRate >= 0.5) riskScore += 2;
@@ -169,8 +193,6 @@ export default function AthleteDeepDive({ team }) {
     let riskLevel = "Stable";
     if (riskScore >= 3) riskLevel = "Critical";
     else if (riskScore === 2) riskLevel = "Warning";
-
-    /* ===== Smart Insights ===== */
 
     const insights = [];
 
@@ -185,8 +207,6 @@ export default function AthleteDeepDive({ team }) {
 
     if (passRate >= 80)
       insights.push("Strong performance — increase intensity");
-
-    /* ===== Adaptive Recommendations ===== */
 
     const recommendations = [];
 
@@ -204,8 +224,6 @@ export default function AthleteDeepDive({ team }) {
 
     if (passRate >= 85 && !fatigue && plateaus.length === 0)
       recommendations.push("Increase load 2.5–5% next week");
-
-    /* ===== Intelligent Load Targets ===== */
 
     const recommendedLoads = {};
 
@@ -229,8 +247,6 @@ export default function AthleteDeepDive({ team }) {
       recommendedLoads[exercise] = nextWeight;
     });
 
-    /* ===== PHASE 4G PERFORMANCE SYSTEM ===== */
-
     let performanceScore = 100;
 
     performanceScore -= failRate * 40;
@@ -239,8 +255,6 @@ export default function AthleteDeepDive({ team }) {
     if (passRate >= 85) performanceScore += 5;
 
     performanceScore = Math.max(0, Math.min(100, Math.round(performanceScore)));
-
-    /* ===== Momentum ===== */
 
     let momentum = 0;
 
@@ -253,8 +267,6 @@ export default function AthleteDeepDive({ team }) {
     });
 
     momentum = Math.round(momentum);
-
-    /* ===== Letter Grade ===== */
 
     let grade = "C";
 
@@ -324,7 +336,6 @@ export default function AthleteDeepDive({ team }) {
           <hr />
 
           <h3>📈 Programming Recommendation</h3>
-          {analytics.recommendations.length === 0 && <p>No changes recommended</p>}
           {analytics.recommendations.map((r, i) => (
             <div key={i} className="recommendation-box">
               {r}
@@ -334,9 +345,6 @@ export default function AthleteDeepDive({ team }) {
           <hr />
 
           <h3>🏋️ Next Session Load Targets</h3>
-          {Object.keys(analytics.recommendedLoads).length === 0 && (
-            <p>No recommendation available</p>
-          )}
           {Object.entries(analytics.recommendedLoads).map(([lift, weight]) => (
             <div key={lift} className="recommendation-box">
               {lift}: {weight} lbs
@@ -346,7 +354,6 @@ export default function AthleteDeepDive({ team }) {
           <hr />
 
           <h3>🔍 Smart Insights</h3>
-          {analytics.insights.length === 0 && <p>No alerts</p>}
           {analytics.insights.map((i, index) => (
             <div key={index} className="insight-card">
               {i}

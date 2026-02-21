@@ -1,5 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  documentId
+} from "firebase/firestore";
 import { db } from "../firebase";
 import {
   LineChart,
@@ -18,77 +24,101 @@ const seasonOrder = {
   Spring: 4
 };
 
-export default function AthleteProgress({ profile }) {
+export default function AthleteProgress({ profile, team }) {
 
-  const [allData, setAllData] = useState([]);
+  const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("");
+  const [allData, setAllData] = useState([]);
 
-  /* ================= LOAD DATA ================= */
-
-  useEffect(() => {
-    if (!profile?.teamId) return;
-
-    const q = query(
-      collection(db, "seasonMaxes"),
-      where("teamId", "==", profile.teamId)
-    );
-
-    const unsub = onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => d.data());
-      setAllData(docs);
-    });
-
-    return () => unsub();
-  }, [profile]);
-
-  /* ================= ATHLETE LIST ================= */
-
-  const athleteList = useMemo(() => {
-    const unique = [...new Set(allData.map(d => d.athleteId))];
-
-    return unique.map(id => {
-      const athlete = allData.find(d => d.athleteId === id);
-      return {
-        athleteId: id,
-        athleteName: athlete?.athleteName || "Unknown"
-      };
-    });
-  }, [allData]);
-
-  /* ================= AUTO SELECT SELF FOR ATHLETE ================= */
+  /* ================= LOAD TEAM ATHLETES ================= */
 
   useEffect(() => {
-    if (!profile) return;
 
-    if (profile.role === "athlete") {
+    if (!team?.members?.length) {
+      setAthletes([]);
+      return;
+    }
+
+    const loadAthletes = async () => {
+
+      const memberIds = team.members;
+
+      const chunks = [];
+      for (let i = 0; i < memberIds.length; i += 10) {
+        chunks.push(memberIds.slice(i, i + 10));
+      }
+
+      const results = [];
+
+      chunks.forEach(chunk => {
+        const q = query(
+          collection(db, "users"),
+          where(documentId(), "in", chunk)
+        );
+
+        onSnapshot(q, snap => {
+          snap.docs.forEach(d => {
+            const data = d.data();
+            if (data.role === "athlete") {
+              results.push({ id: d.id, ...data });
+            }
+          });
+
+          setAthletes([...results]);
+        });
+      });
+    };
+
+    loadAthletes();
+
+  }, [team]);
+
+  /* ================= AUTO SELECT SELF ================= */
+
+  useEffect(() => {
+    if (profile?.role === "athlete") {
       setSelectedAthlete(profile.uid);
     }
   }, [profile]);
 
-  /* ================= FILTER + SORT ================= */
+  /* ================= LOAD SEASON DATA ================= */
+
+  useEffect(() => {
+
+    if (!team?.id || !selectedAthlete) {
+      setAllData([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "seasonMaxes"),
+      where("teamId", "==", team.id),
+      where("athleteId", "==", selectedAthlete)
+    );
+
+    const unsub = onSnapshot(q, snap => {
+      setAllData(snap.docs.map(d => d.data()));
+    });
+
+    return () => unsub();
+
+  }, [team, selectedAthlete]);
+
+  /* ================= SORT ================= */
 
   const chartData = useMemo(() => {
 
-    if (!selectedAthlete) return [];
-
-    const filtered = allData.filter(d =>
-      d.athleteId === selectedAthlete
-    );
-
-    return filtered
+    return [...allData]
       .sort((a, b) => {
         if (a.year !== b.year) return a.year - b.year;
         return seasonOrder[a.season] - seasonOrder[b.season];
       })
       .map(d => ({
         label: `${d.season} ${d.year}`,
-        total: d.total || 0,
-        bench: d.bench || 0,
-        squat: d.squat || 0,
-        powerClean: d.powerClean || 0
+        total: d.total || 0
       }));
 
-  }, [allData, selectedAthlete]);
+  }, [allData]);
 
   /* ================= UI ================= */
 
@@ -103,9 +133,9 @@ export default function AthleteProgress({ profile }) {
           onChange={e => setSelectedAthlete(e.target.value)}
         >
           <option value="">Select Athlete</option>
-          {athleteList.map(a => (
-            <option key={a.athleteId} value={a.athleteId}>
-              {a.athleteName}
+          {athletes.map(a => (
+            <option key={a.id} value={a.id}>
+              {a.displayName}
             </option>
           ))}
         </select>

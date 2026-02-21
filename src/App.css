@@ -268,3 +268,35 @@ input, select {
   }
 
 }
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--card);
+  display: none;
+  justify-content: space-around;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  z-index: 1000;
+}
+
+.bottom-nav-item {
+  font-size: 20px;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+
+  .sidebar {
+    display: none;
+  }
+
+  .content {
+    padding-bottom: 80px;
+  }
+
+  .bottom-nav {
+    display: flex;
+  }
+}
