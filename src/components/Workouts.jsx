@@ -15,13 +15,13 @@ export default function Workouts({ profile, team }) {
 
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("");
+
   const [exercise, setExercise] = useState("Bench");
+  const [selectionValue, setSelectionValue] = useState("1"); // Box or %
   const [weight, setWeight] = useState(135);
   const [result, setResult] = useState("Pass");
 
-  const [percentageMode, setPercentageMode] = useState(false);
   const [max, setMax] = useState(0);
-
   const [successFlash, setSuccessFlash] = useState(false);
 
   /* ================= LOAD TEAM ATHLETES ================= */
@@ -50,11 +50,9 @@ export default function Workouts({ profile, team }) {
 
   }, [team]);
 
-  /* ================= LOAD MAX FOR PERCENTAGE MODE ================= */
+  /* ================= LOAD MAX ================= */
 
   useEffect(() => {
-
-    if (!percentageMode) return;
 
     const athleteId =
       profile?.role === "coach"
@@ -82,7 +80,37 @@ export default function Workouts({ profile, team }) {
 
     loadMax();
 
-  }, [percentageMode, exercise, selectedAthlete, profile]);
+  }, [exercise, selectedAthlete, profile]);
+
+  /* ================= SET LOGIC ================= */
+
+  const getSets = () => {
+
+    if (selectionValue === "Max") return 1;
+
+    if (exercise === "Squat") return 5;
+
+    // Bench & PowerClean
+    if (selectionValue === "1") return 5;
+
+    return 6; // Boxes 2–6
+  };
+
+  /* ================= CALCULATE FINAL WEIGHT ================= */
+
+  const calculateWeight = () => {
+
+    if (selectionValue === "Max") {
+      return exercise === "Squat" ? max : weight;
+    }
+
+    if (exercise === "Squat") {
+      return Math.round((Number(selectionValue) / 100) * max);
+    }
+
+    // Bench & PowerClean use chosen weight
+    return Number(weight);
+  };
 
   /* ================= SAVE WORKOUT ================= */
 
@@ -114,9 +142,8 @@ export default function Workouts({ profile, team }) {
       athleteName = selected.displayName;
     }
 
-    const finalWeight = percentageMode
-      ? Math.round((Number(weight) / 100) * Number(max))
-      : Number(weight);
+    const finalWeight = calculateWeight();
+    const sets = getSets();
 
     try {
 
@@ -126,8 +153,8 @@ export default function Workouts({ profile, team }) {
         teamId: team.id,
         exercise,
         weight: finalWeight,
-        percentageMode,
-        percentageUsed: percentageMode ? Number(weight) : null,
+        sets,
+        selectionValue,
         result,
         createdAt: serverTimestamp()
       });
@@ -145,87 +172,113 @@ export default function Workouts({ profile, team }) {
     }
   };
 
-  /* ================= UI ================= */
+  /* ================= DROPDOWN OPTIONS ================= */
 
-  return (
-    <div className={`card ${successFlash ? "success-flash" : ""}`}>
+  const renderDynamicDropdown = () => {
 
-      <h2>Log Workout</h2>
-
-      {profile?.role === "coach" && (
+    if (exercise === "Squat") {
+      return (
         <select
-          value={selectedAthlete}
-          onChange={e => setSelectedAthlete(e.target.value)}
+          value={selectionValue}
+          onChange={e => setSelectionValue(e.target.value)}
         >
-          <option value="">Select Athlete</option>
-          {athletes.map(a => (
-            <option key={a.id} value={a.id}>
-              {a.displayName}
-            </option>
-          ))}
-        </select>
-      )}
-
-      <label style={{ marginBottom: 10 }}>
-        <input
-          type="checkbox"
-          checked={percentageMode}
-          onChange={() => setPercentageMode(!percentageMode)}
-        />
-        {" "}Use Percentage
-      </label>
-
-      <select
-        value={exercise}
-        onChange={e => setExercise(e.target.value)}
-      >
-        <option>Bench</option>
-        <option>Squat</option>
-        <option>PowerClean</option>
-      </select>
-
-      {percentageMode ? (
-        <select
-          value={weight}
-          onChange={e => setWeight(e.target.value)}
-        >
-          {Array.from({ length: 31 }, (_, i) => 50 + i * 5).map(p => (
+          {Array.from({ length: 14 }, (_, i) => 25 + i * 5).map(p => (
             <option key={p} value={p}>
               {p}%
             </option>
           ))}
+          <option value="Max">Max</option>
         </select>
-      ) : (
+      );
+    }
+
+    // Bench & PowerClean → Box System
+    return (
+      <>
         <select
-          value={weight}
-          onChange={e => setWeight(e.target.value)}
+          value={selectionValue}
+          onChange={e => setSelectionValue(e.target.value)}
         >
-          {Array.from({ length: 60 }, (_, i) => 95 + i * 5).map(w => (
-            <option key={w} value={w}>
-              {w} lbs
-            </option>
-          ))}
+          <option value="1">Box 1</option>
+          <option value="2">Box 2</option>
+          <option value="3">Box 3</option>
+          <option value="4">Box 4</option>
+          <option value="5">Box 5</option>
+          <option value="6">Box 6</option>
+          <option value="Max">Max</option>
         </select>
-      )}
 
-      <select
-        value={result}
-        onChange={e => setResult(e.target.value)}
-      >
-        <option>Pass</option>
-        <option>Fail</option>
-      </select>
+        {selectionValue !== "Max" && (
+          <select
+            value={weight}
+            onChange={e => setWeight(e.target.value)}
+          >
+            {Array.from({ length: 59 }, (_, i) => 135 + i * 5).map(w => (
+              <option key={w} value={w}>
+                {w} lbs
+              </option>
+            ))}
+          </select>
+        )}
+      </>
+    );
+  };
 
-      <button onClick={saveWorkout}>
-        Save Workout
-      </button>
+  /* ================= UI ================= */
 
-      {successFlash && (
-        <div style={{ marginTop: 12, color: "var(--success)" }}>
-          ✅ Workout Saved
-        </div>
-      )}
+  return (
+    <div className="workout-wrapper">
+      <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
 
+        <h2>Log Workout</h2>
+
+        {profile?.role === "coach" && (
+          <select
+            value={selectedAthlete}
+            onChange={e => setSelectedAthlete(e.target.value)}
+          >
+            <option value="">Select Athlete</option>
+            {athletes.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.displayName}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <select
+          value={exercise}
+          onChange={e => {
+            setExercise(e.target.value);
+            setSelectionValue(e.target.value === "Squat" ? "25" : "1");
+          }}
+        >
+          <option>Bench</option>
+          <option>Squat</option>
+          <option>PowerClean</option>
+        </select>
+
+        {renderDynamicDropdown()}
+
+        <select
+          value={result}
+          onChange={e => setResult(e.target.value)}
+        >
+          <option>Pass</option>
+          <option>Fail</option>
+        </select>
+
+        <button onClick={saveWorkout}>
+          Save Workout
+        </button>
+
+        {successFlash && (
+          <div style={{ marginTop: 12, color: "var(--success)" }}>
+            ✅ Workout Saved
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
