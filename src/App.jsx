@@ -217,13 +217,8 @@ export default function App() {
       }
 
       // ✅ Create Auth user and get credential object
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-
-      const uid = cred.user.uid;
+     const cred = await createUserWithEmailAndPassword(auth, email, password);
+const uid = cred.user.uid;
 
       // ✅ Create Firestore profile using UID from cred
       await setDoc(doc(db, "users", uid), {
