@@ -281,3 +281,8 @@ input, select {
     display: flex;
   }
 }
+@media (max-width: 768px) {
+  body {
+    background: red !important;
+  }
+}
