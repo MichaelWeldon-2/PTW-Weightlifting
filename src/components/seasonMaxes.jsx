@@ -17,7 +17,7 @@ export default function SeasonMaxes({ profile }) {
 
     let q;
 
-    if (profile.role === "coach") {
+    if (profile?.role === "coach") {
       q = collection(db, "seasonMaxes");
     } else {
       q = query(

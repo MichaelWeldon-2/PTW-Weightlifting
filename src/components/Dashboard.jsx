@@ -6,26 +6,24 @@ import AnimatedStat from "./AnimatedStat";
 
 function Dashboard({ profile, workouts = [], team }) {
 
+  /* ================= STATE ================= */
+
   const [currentBlock, setCurrentBlock] = useState(null);
   const [competitionCountdown, setCompetitionCountdown] = useState(null);
   const [successFlash, setSuccessFlash] = useState(false);
 
   const isCoach = profile?.role === "coach";
 
-  if (!profile) {
-    return <div className="loading">Loading dashboard...</div>;
-  }
-
   /* ================= TEAM FATIGUE ================= */
 
   const teamFatigue = useMemo(() => {
 
-    if (!workouts.length)
+    if (!workouts?.length)
       return { status: "Stable", failRate: 0 };
 
     const recent = workouts.slice(-20);
     const fails = recent.filter(w => w.result === "Fail").length;
-    const failRate = fails / recent.length;
+    const failRate = recent.length ? fails / recent.length : 0;
 
     if (failRate >= 0.5) return { status: "Critical", failRate };
     if (failRate >= 0.3) return { status: "Warning", failRate };
@@ -38,13 +36,16 @@ function Dashboard({ profile, workouts = [], team }) {
 
   const analytics = useMemo(() => {
 
-    if (!workouts.length)
+    if (!workouts?.length)
       return { topPerformer: null, mostImproved: null, totalVolume: 0 };
 
     const grouped = {};
     let totalVolume = 0;
 
     workouts.forEach(w => {
+
+      if (!w?.athleteName) return;
+
       if (!grouped[w.athleteName])
         grouped[w.athleteName] = [];
 
@@ -57,6 +58,9 @@ function Dashboard({ profile, workouts = [], team }) {
     const improvements = [];
 
     Object.entries(grouped).forEach(([name, weights]) => {
+
+      if (!weights.length) return;
+
       const max = Math.max(...weights);
       const min = Math.min(...weights);
 
@@ -88,7 +92,7 @@ function Dashboard({ profile, workouts = [], team }) {
 
       const program = snap.data();
 
-      if (program.competitionDate) {
+      if (program?.competitionDate) {
         const diff = Math.ceil(
           (new Date(program.competitionDate) - new Date()) /
           (1000 * 60 * 60 * 24)
@@ -96,7 +100,7 @@ function Dashboard({ profile, workouts = [], team }) {
         setCompetitionCountdown(diff > 0 ? diff : 0);
       }
 
-      const currentWeek = team.currentWeek;
+      const currentWeek = team?.currentWeek;
 
       program.blocks?.forEach(block => {
         if (
@@ -129,7 +133,7 @@ function Dashboard({ profile, workouts = [], team }) {
     await setDoc(
       doc(db, "teams", team.id),
       {
-        currentWeek: team.currentWeek + 1,
+        currentWeek: (team.currentWeek || 0) + 1,
         trainingDayType: nextType
       },
       { merge: true }
@@ -146,6 +150,12 @@ function Dashboard({ profile, workouts = [], team }) {
       ? "status-warning"
       : "status-stable";
 
+  /* ================= SAFE EARLY RETURN ================= */
+
+  if (!profile) {
+    return <div className="loading">Loading dashboard...</div>;
+  }
+
   /* ================= RENDER ================= */
 
   return (
@@ -155,7 +165,7 @@ function Dashboard({ profile, workouts = [], team }) {
         <div className="hero-overlay">
           <h1>{team?.name || "Team Dashboard"}</h1>
           <p>
-            {team?.currentSeason} • {team?.currentBlock} • Week {team?.currentWeek}
+            {team?.currentSeason || ""} • {team?.currentBlock || ""} • Week {team?.currentWeek || 0}
           </p>
         </div>
       </div>
