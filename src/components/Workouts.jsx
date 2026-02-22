@@ -159,7 +159,7 @@ export default function Workouts({ profile, team }) {
 
   try {
 
-    // 1️⃣ Save workout
+    // 1️⃣ Save workout normally
     await addDoc(collection(db, "workouts"), {
       athleteId,
       athleteName,
@@ -171,17 +171,26 @@ export default function Workouts({ profile, team }) {
       createdAt: serverTimestamp()
     });
 
-    // 2️⃣ If Max + Pass → Update max
+    // 2️⃣ If Max + Pass → Update athlete max document
     if (selectionValue === "Max" && result === "Pass") {
 
+      const maxFieldMap = {
+        Bench: "benchMax",
+        Squat: "squatMax",
+        PowerClean: "powerCleanMax"
+      };
+
+      const fieldToUpdate = maxFieldMap[exercise];
+
       await setDoc(
-        doc(db, "seasonMaxes", `${athleteId}_${exercise}`),
+        doc(db, "seasonMaxes", athleteId),   // ✅ ONE doc per athlete
         {
           athleteId,
-          exercise,
-          max: Number(selectedWeight),
+          athleteName,
+          [fieldToUpdate]: Number(selectedWeight),
           updatedAt: serverTimestamp()
-        }
+        },
+        { merge: true }                     // ✅ merge instead of overwrite
       );
     }
 
@@ -194,7 +203,6 @@ export default function Workouts({ profile, team }) {
     alert("SAVE FAILED: " + err.message);
   }
 };
-
   /* ================= DROPDOWN UI ================= */
 
   const renderDynamicDropdown = () => {
