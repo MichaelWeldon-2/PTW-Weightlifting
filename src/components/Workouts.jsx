@@ -131,71 +131,69 @@ export default function Workouts({ profile, team }) {
 
   const saveWorkout = async () => {
 
-    if (!team?.id) {
-      alert("Team not loaded.");
-      return;
-    }
-
-    const athleteId =
-      profile?.role === "coach"
-        ? selectedAthlete
-        : profile?.uid;
-
-    if (!athleteId) {
-      alert("Select athlete");
-      return;
-    }
-
-    let athleteName = profile?.displayName;
-
-    if (profile?.role === "coach") {
-      const selected = athletes.find(a => a.id === selectedAthlete);
-      if (!selected) {
-        alert("Invalid athlete selection.");
-        return;
-      }
-      athleteName = selected.displayName;
-    }
-
-    const sets = getCalculatedSets();
-
-    try {
-
-  await addDoc(collection(db, "workouts"), {
-    athleteId,
-    athleteName,
-    teamId: team.id,
-    exercise,
-    weight: Number(selectedWeight),
-    sets,
-    selectionValue,
-    result,
-    createdAt: serverTimestamp()
-  });
-
-  // NEW MAX LOGIC
-  if (selectionValue === "Max" && result === "Pass") {
-    await setDoc(
-      doc(db, "seasonMaxes", `${athleteId}_${exercise}`),
-      {
-        athleteId,
-        exercise,
-        max: Number(selectedWeight),
-        updatedAt: serverTimestamp()
-      }
-    );
-
-    setMax(Number(selectedWeight));
+  if (!team?.id) {
+    alert("Team not loaded.");
+    return;
   }
 
-  // SUCCESS FLASH
-  setSuccessFlash(true);
-  setTimeout(() => setSuccessFlash(false), 1000);
-} catch (err) {
-      console.error("Workout save error:", err);
-      alert(err.message);
+  const athleteId =
+    profile?.role === "coach"
+      ? selectedAthlete
+      : profile?.uid;
+
+  if (!athleteId) {
+    alert("Select athlete");
+    return;
+  }
+
+  let athleteName = profile?.displayName;
+
+  if (profile?.role === "coach") {
+    const selected = athletes.find(a => a.id === selectedAthlete);
+    if (!selected) {
+      alert("Invalid athlete selection.");
+      return;
     }
-  };
+    athleteName = selected.displayName;
+  }
+
+  try {
+
+    // 1️⃣ Save workout FIRST
+    await addDoc(collection(db, "workouts"), {
+      athleteId,
+      athleteName,
+      teamId: team.id,
+      exercise,
+      weight: Number(weight),
+      selectionValue,
+      result,
+      createdAt: serverTimestamp()
+    });
+
+    // 2️⃣ If Max + Pass → Update seasonMax
+    if (selectionValue === "Max" && result === "Pass") {
+
+      await setDoc(
+        doc(db, "seasonMaxes", `${athleteId}_${exercise}`),
+        {
+          athleteId,
+          exercise,
+          max: Number(weight),
+          updatedAt: serverTimestamp()
+        }
+      );
+    }
+
+    // 3️⃣ SUCCESS FLASH ALWAYS LAST
+    setSuccessFlash(true);
+    setTimeout(() => setSuccessFlash(false), 1000);
+
+  } catch (err) {
+    console.error("Workout save error:", err);
+    alert("SAVE FAILED: " + err.message);
+  }
+};
 
   /* ================= DROPDOWN UI ================= */
 
