@@ -63,42 +63,59 @@ export default function Workouts({ profile, team }) {
   }, [team]);
 
   /* ================= SAVE WORKOUT ================= */
+const saveWorkout = async () => {
 
-  const saveWorkout = async () => {
+  if (!team?.id) {
+    alert("Team not loaded.");
+    return;
+  }
 
-    const athleteId =
-      profile?.role === "coach"
-        ? selectedAthlete
-        : profile.uid;
+  const athleteId =
+    profile?.role === "coach"
+      ? selectedAthlete
+      : profile?.uid;
 
-    if (!athleteId) {
-      alert("Select athlete");
+  if (!athleteId) {
+    alert("Select athlete");
+    return;
+  }
+
+  // If coach, get athlete name from dropdown list
+  let athleteName = profile?.displayName;
+
+  if (profile?.role === "coach") {
+    const selected = athletes.find(a => a.id === selectedAthlete);
+    if (!selected) {
+      alert("Invalid athlete selection.");
       return;
     }
+    athleteName = selected.displayName;
+  }
 
-    try {
+  try {
 
-      await addDoc(collection(db, "workouts"), {
-        athleteId,
-        teamId: team.id,
-        exercise,
-        weight: Number(weight),
-        result,
-        createdAt: serverTimestamp()
-      });
+    await addDoc(collection(db, "workouts"), {
+      athleteId,
+      athleteName,
+      teamId: team.id,
+      exercise,
+      weight: Number(weight),
+      result,
+      createdAt: serverTimestamp()
+    });
 
-      setSuccessFlash(true);
-      setTimeout(() => setSuccessFlash(false), 800);
+    setSuccessFlash(true);
+    setTimeout(() => setSuccessFlash(false), 800);
 
-      if (profile?.role === "coach") {
-        setSelectedAthlete("");
-      }
-
-    } catch (err) {
-      console.error("Workout save error:", err);
+    if (profile?.role === "coach") {
+      setSelectedAthlete("");
     }
-  };
 
+  } catch (err) {
+    console.error("Workout save error:", err);
+    alert(err.message);
+  }
+};
   /* ================= UI ================= */
 
   return (
