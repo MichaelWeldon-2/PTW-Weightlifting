@@ -176,7 +176,7 @@ input, select {
 /* SUCCESS FLASH */
 
 .success-flash {
-  animation: flashSuccess 0.8s ease;
+  animation: flashSuccess 1s ease;
 }
 
 @keyframes flashSuccess {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   collection,
   addDoc,
+  setDoc,
   query,
   where,
   onSnapshot,
@@ -160,26 +161,37 @@ export default function Workouts({ profile, team }) {
 
     try {
 
-      await addDoc(collection(db, "workouts"), {
+  await addDoc(collection(db, "workouts"), {
+    athleteId,
+    athleteName,
+    teamId: team.id,
+    exercise,
+    weight: Number(selectedWeight),
+    sets,
+    selectionValue,
+    result,
+    createdAt: serverTimestamp()
+  });
+
+  // NEW MAX LOGIC
+  if (selectionValue === "Max" && result === "Pass") {
+    await setDoc(
+      doc(db, "seasonMaxes", `${athleteId}_${exercise}`),
+      {
         athleteId,
-        athleteName,
-        teamId: team.id,
         exercise,
-        weight: selectedWeight,
-        selectionValue,
-        sets,
-        result,
-        createdAt: serverTimestamp()
-      });
-
-      setSuccessFlash(true);
-      setTimeout(() => setSuccessFlash(false), 800);
-
-      if (profile?.role === "coach") {
-        setSelectedAthlete("");
+        max: Number(selectedWeight),
+        updatedAt: serverTimestamp()
       }
+    );
 
-    } catch (err) {
+    setMax(Number(selectedWeight));
+  }
+
+  // SUCCESS FLASH
+  setSuccessFlash(true);
+  setTimeout(() => setSuccessFlash(false), 1000);
+} catch (err) {
       console.error("Workout save error:", err);
       alert(err.message);
     }
@@ -251,8 +263,8 @@ export default function Workouts({ profile, team }) {
   /* ================= UI ================= */
 
   return (
-    <div className="workout-wrapper">
-      <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
+   <div className="workout-wrapper">
+  <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
 
         <h2>Log Workout</h2>
 
