@@ -7,9 +7,13 @@ import {
   onSnapshot,
   serverTimestamp,
   documentId,
-  getDocs
+  getDocs,
+  doc,
+  getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { defaultTemplate } from "../utils/boxTemplates";
+import { calculateSets } from "../utils/calculateSets";
 
 export default function Workouts({ profile, team }) {
 
@@ -17,12 +21,32 @@ export default function Workouts({ profile, team }) {
   const [selectedAthlete, setSelectedAthlete] = useState("");
 
   const [exercise, setExercise] = useState("Bench");
-  const [selectionValue, setSelectionValue] = useState("1"); // Box or %
-  const [weight, setWeight] = useState(135);
+  const [selectionValue, setSelectionValue] = useState("1");
+
+  const [selectedWeight, setSelectedWeight] = useState(135);
   const [result, setResult] = useState("Pass");
 
   const [max, setMax] = useState(0);
   const [successFlash, setSuccessFlash] = useState(false);
+  const [teamTemplate, setTeamTemplate] = useState(defaultTemplate);
+
+  /* ================= LOAD TEAM TEMPLATE ================= */
+
+  useEffect(() => {
+    if (!team?.id) return;
+
+    const loadTemplate = async () => {
+      const snap = await getDoc(doc(db, "teamTemplates", team.id));
+
+      if (snap.exists()) {
+        setTeamTemplate(snap.data().template);
+      } else {
+        setTeamTemplate(defaultTemplate);
+      }
+    };
+
+    loadTemplate();
+  }, [team?.id]);
 
   /* ================= LOAD TEAM ATHLETES ================= */
 
@@ -82,34 +106,24 @@ export default function Workouts({ profile, team }) {
 
   }, [exercise, selectedAthlete, profile]);
 
-  /* ================= SET LOGIC ================= */
+  /* ================= CALCULATE SETS ================= */
 
-  const getSets = () => {
+  const getCalculatedSets = () => {
 
-    if (selectionValue === "Max") return 1;
-
-    if (exercise === "Squat") return 5;
-
-    // Bench & PowerClean
-    if (selectionValue === "1") return 5;
-
-    return 6; // Boxes 2–6
-  };
-
-  /* ================= CALCULATE FINAL WEIGHT ================= */
-
-  const calculateWeight = () => {
-
-    if (selectionValue === "Max") {
-      return exercise === "Squat" ? max : weight;
-    }
+    const baseWeight = selectedWeight;
 
     if (exercise === "Squat") {
-      return Math.round((Number(selectionValue) / 100) * max);
+      if (selectionValue === "Max") {
+        return calculateSets(teamTemplate["Max"], baseWeight);
+      }
+      return calculateSets(teamTemplate["Percentage"], baseWeight);
     }
 
-    // Bench & PowerClean use chosen weight
-    return Number(weight);
+    if (selectionValue === "Max") {
+      return calculateSets(teamTemplate["Max"], baseWeight);
+    }
+
+    return calculateSets(teamTemplate[`Box${selectionValue}`], baseWeight);
   };
 
   /* ================= SAVE WORKOUT ================= */
@@ -142,8 +156,7 @@ export default function Workouts({ profile, team }) {
       athleteName = selected.displayName;
     }
 
-    const finalWeight = calculateWeight();
-    const sets = getSets();
+    const sets = getCalculatedSets();
 
     try {
 
@@ -152,9 +165,9 @@ export default function Workouts({ profile, team }) {
         athleteName,
         teamId: team.id,
         exercise,
-        weight: finalWeight,
-        sets,
+        weight: selectedWeight,
         selectionValue,
+        sets,
         result,
         createdAt: serverTimestamp()
       });
@@ -172,27 +185,40 @@ export default function Workouts({ profile, team }) {
     }
   };
 
-  /* ================= DROPDOWN OPTIONS ================= */
+  /* ================= DROPDOWN UI ================= */
 
   const renderDynamicDropdown = () => {
 
     if (exercise === "Squat") {
       return (
-        <select
-          value={selectionValue}
-          onChange={e => setSelectionValue(e.target.value)}
-        >
-          {Array.from({ length: 14 }, (_, i) => 25 + i * 5).map(p => (
-            <option key={p} value={p}>
-              {p}%
-            </option>
-          ))}
-          <option value="Max">Max</option>
-        </select>
+        <>
+          <select
+            value={selectionValue}
+            onChange={e => setSelectionValue(e.target.value)}
+          >
+            {Array.from({ length: 14 }, (_, i) => 25 + i * 5).map(p => (
+              <option key={p} value={p}>
+                {p}%
+              </option>
+            ))}
+            <option value="Max">Max</option>
+          </select>
+
+          <select
+            value={selectedWeight}
+            onChange={(e) => setSelectedWeight(Number(e.target.value))}
+          >
+            {Array.from({ length: 59 }, (_, i) => 135 + i * 5).map(w => (
+              <option key={w} value={w}>
+                {w} lbs
+              </option>
+            ))}
+          </select>
+        </>
       );
     }
 
-    // Bench & PowerClean → Box System
+    // Bench & PowerClean
     return (
       <>
         <select
@@ -208,18 +234,16 @@ export default function Workouts({ profile, team }) {
           <option value="Max">Max</option>
         </select>
 
-        {selectionValue !== "Max" && (
-          <select
-            value={weight}
-            onChange={e => setWeight(e.target.value)}
-          >
-            {Array.from({ length: 59 }, (_, i) => 135 + i * 5).map(w => (
-              <option key={w} value={w}>
-                {w} lbs
-              </option>
-            ))}
-          </select>
-        )}
+        <select
+          value={selectedWeight}
+          onChange={(e) => setSelectedWeight(Number(e.target.value))}
+        >
+          {Array.from({ length: 59 }, (_, i) => 135 + i * 5).map(w => (
+            <option key={w} value={w}>
+              {w} lbs
+            </option>
+          ))}
+        </select>
       </>
     );
   };
