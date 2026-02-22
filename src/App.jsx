@@ -33,7 +33,7 @@ import Account from "./components/Account";
 
 import "./App.css";
 
-/* ================= MOBILE NAV ITEM ================= */
+/* ================= NAV COMPONENTS ================= */
 
 function NavItem({ icon, label, active, onClick }) {
   return (
@@ -64,27 +64,22 @@ export default function App() {
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-
   const [teams, setTeams] = useState([]);
   const [activeTeam, setActiveTeam] = useState(null);
-
   const [activeTab, setActiveTab] = useState("dashboard");
   const [loadingProfile, setLoadingProfile] = useState(true);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-
   const [isRegistering, setIsRegistering] = useState(false);
   const [roleChoice, setRoleChoice] = useState("athlete");
   const [inviteCode, setInviteCode] = useState("");
 
-  /* ================= LOAD USER TEAMS ================= */
+  /* ================= LOAD TEAMS ================= */
 
   const loadTeams = async (uid) => {
-    const teamsSnap = await getDocs(
-      collection(db, "users", uid, "teams")
-    );
+    const teamsSnap = await getDocs(collection(db, "users", uid, "teams"));
 
     const userTeams = [];
 
@@ -101,7 +96,6 @@ export default function App() {
     }
 
     setTeams(userTeams);
-
     if (userTeams.length > 0) {
       setActiveTeam(userTeams[0]);
     }
@@ -123,7 +117,6 @@ export default function App() {
       }
 
       try {
-
         const snap = await getDoc(doc(db, "users", u.uid));
 
         if (!snap.exists()) {
@@ -140,7 +133,6 @@ export default function App() {
       }
 
       setLoadingProfile(false);
-
     });
 
     return () => unsub();
@@ -150,96 +142,147 @@ export default function App() {
   /* ================= AUTH SCREEN ================= */
 
   if (!user) {
-  return (
-    <div className="auth-container">
-      <div className="auth-card">
+    return (
+      <div className="auth-container">
+        <div className="auth-card">
 
-        <div className="auth-title">PTW Weightlifting</div>
+          <div className="auth-title">PTW Weightlifting</div>
 
-        <input
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="Email"
-        />
+          <input
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="Email"
+          />
 
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder="Password"
-        />
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+          />
 
-        {isRegistering && (
-          <>
-            <input
-              value={displayName}
-              onChange={e => setDisplayName(e.target.value)}
-              placeholder="Full Name"
-            />
-
-            {/* ✅ RADIO ALIGNMENT FIX GOES HERE */}
-            <div className="auth-radio-group">
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="radio"
-                  value="coach"
-                  checked={roleChoice === "coach"}
-                  onChange={() => setRoleChoice("coach")}
-                />
-                Coach
-              </label>
-
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="radio"
-                  value="athlete"
-                  checked={roleChoice === "athlete"}
-                  onChange={() => setRoleChoice("athlete")}
-                />
-                Athlete
-              </label>
-            </div>
-
-            {roleChoice === "athlete" && (
+          {isRegistering && (
+            <>
               <input
-                value={inviteCode}
-                onChange={e => setInviteCode(e.target.value)}
-                placeholder="Team Invite Code"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                placeholder="Full Name"
               />
-            )}
-          </>
-        )}
 
-        <button
-          onClick={async () => {
-            try {
-              if (isRegistering) {
-                // your existing register logic here
-              } else {
-                await signInWithEmailAndPassword(auth, email, password);
+              <div className="auth-radio-group">
+                <label>
+                  <input
+                    type="radio"
+                    value="coach"
+                    checked={roleChoice === "coach"}
+                    onChange={() => setRoleChoice("coach")}
+                  />
+                  Coach
+                </label>
+
+                <label>
+                  <input
+                    type="radio"
+                    value="athlete"
+                    checked={roleChoice === "athlete"}
+                    onChange={() => setRoleChoice("athlete")}
+                  />
+                  Athlete
+                </label>
+              </div>
+
+              {roleChoice === "athlete" && (
+                <input
+                  value={inviteCode}
+                  onChange={e => setInviteCode(e.target.value)}
+                  placeholder="Team Invite Code"
+                />
+              )}
+            </>
+          )}
+
+          <button
+            onClick={async () => {
+              try {
+
+                if (isRegistering) {
+
+                  if (!displayName.trim()) {
+                    alert("Enter full name");
+                    return;
+                  }
+
+                  let teamId = null;
+
+                  if (roleChoice === "athlete") {
+
+                    if (!inviteCode.trim()) {
+                      alert("Invite code required.");
+                      return;
+                    }
+
+                    const q = query(
+                      collection(db, "teams"),
+                      where("inviteCode", "==", inviteCode.trim().toUpperCase())
+                    );
+
+                    const snap = await getDocs(q);
+
+                    if (snap.empty) {
+                      alert("Invalid invite code.");
+                      return;
+                    }
+
+                    teamId = snap.docs[0].id;
+                  }
+
+                  const cred = await createUserWithEmailAndPassword(auth, email, password);
+                  const uid = cred.user.uid;
+
+                  await setDoc(doc(db, "users", uid), {
+                    displayName: displayName.trim(),
+                    role: roleChoice,
+                    teamId: teamId || null,
+                    createdAt: serverTimestamp()
+                  });
+
+                  if (teamId) {
+                    await setDoc(doc(db, "users", uid, "teams", teamId), {
+                      role: roleChoice,
+                      joinedAt: serverTimestamp()
+                    });
+
+                    await updateDoc(doc(db, "teams", teamId), {
+                      members: arrayUnion(uid)
+                    });
+                  }
+
+                } else {
+                  await signInWithEmailAndPassword(auth, email, password);
+                }
+
+              } catch (err) {
+                console.error("Auth error:", err);
+                alert(err.message);
               }
-            } catch (err) {
-              console.error("Auth error:", err);
-              alert(err.message);
-            }
-          }}
-        >
-          {isRegistering ? "Register" : "Sign In"}
-        </button>
+            }}
+          >
+            {isRegistering ? "Register" : "Sign In"}
+          </button>
 
-        <button
-          style={{ marginTop: 10, background: "transparent", color: "var(--accent)" }}
-          onClick={() => setIsRegistering(!isRegistering)}
-        >
-          {isRegistering
-            ? "Already have an account? Sign In"
-            : "Need an account? Register"}
-        </button>
+          <button
+            style={{ marginTop: 10, background: "transparent", color: "var(--accent)" }}
+            onClick={() => setIsRegistering(!isRegistering)}
+          >
+            {isRegistering
+              ? "Already have an account? Sign In"
+              : "Need an account? Register"}
+          </button>
 
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   /* ================= SAFETY GUARDS ================= */
 
@@ -251,7 +294,7 @@ export default function App() {
     return <div className="loading">Finalizing account...</div>;
   }
 
-  if (profile.role === "athlete" && !profile.teamId) {
+  if (profile?.role === "athlete" && !profile?.teamId) {
     return <div className="loading">Joining team...</div>;
   }
 
@@ -260,7 +303,6 @@ export default function App() {
   return (
     <div className="app">
 
-      {/* DESKTOP SIDEBAR */}
       <div className="sidebar">
         <h3 style={{ marginBottom: 20 }}>PTW</h3>
 
@@ -269,7 +311,7 @@ export default function App() {
         <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
         <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
 
-        {profile.role === "coach" && (
+        {profile?.role === "coach" && (
           <>
             <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
             <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
@@ -281,7 +323,6 @@ export default function App() {
         <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
       </div>
 
-      {/* MAIN CONTENT */}
       <div className="content">
         <AnimatePresence mode="wait">
           <motion.div
@@ -295,21 +336,20 @@ export default function App() {
             {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
             {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
             {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
-            {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
-            {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
-            {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
+            {activeTab === "deep" && profile?.role==="coach" && <AthleteDeepDive team={activeTeam} />}
+            {activeTab === "coach" && profile?.role==="coach" && <CoachDashboard team={activeTeam} />}
+            {activeTab === "program" && profile?.role==="coach" && <ProgramBuilder team={activeTeam} />}
+            {activeTab === "createTeam" && profile?.role==="coach" && <CreateTeam profile={profile} />}
             {activeTab === "account" && <Account profile={profile} />}
           </motion.div>
         </AnimatePresence>
       </div>
 
-      {/* MOBILE BOTTOM NAV */}
       <div className="bottom-nav">
         <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
         <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
         <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
-        {profile.role === "coach" && (
+        {profile?.role === "coach" && (
           <NavItem icon="🧠" label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
         )}
         <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
