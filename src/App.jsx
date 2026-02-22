@@ -49,12 +49,13 @@ export default function App() {
   const [displayName, setDisplayName] = useState("");
 
   const [isRegistering, setIsRegistering] = useState(false);
-  const [roleChoice, setRoleChoice] =  useState("athlete");
+  const [roleChoice, setRoleChoice] = useState("athlete");
   const [inviteCode, setInviteCode] = useState("");
 
   /* ================= LOAD USER TEAMS ================= */
 
   const loadTeams = async (uid) => {
+
     const teamsSnap = await getDocs(
       collection(db, "users", uid, "teams")
     );
@@ -62,6 +63,7 @@ export default function App() {
     const userTeams = [];
 
     for (const docSnap of teamsSnap.docs) {
+
       const teamId = docSnap.id;
       const teamSnap = await getDoc(doc(db, "teams", teamId));
 
@@ -96,6 +98,7 @@ export default function App() {
       }
 
       try {
+
         const snap = await getDoc(doc(db, "users", u.uid));
 
         if (!snap.exists()) {
@@ -112,7 +115,6 @@ export default function App() {
       }
 
       setLoadingProfile(false);
-
     });
 
     return () => unsub();
@@ -182,81 +184,77 @@ export default function App() {
         )}
 
         <button
-       onClick={async () => {
-  try {
+          onClick={async () => {
+            try {
 
-    if (isRegistering) {
+              if (isRegistering) {
 
-      if (!displayName.trim()) {
-        alert("Please enter your full name.");
-        return;
-      }
+                if (!displayName.trim()) {
+                  alert("Please enter your full name.");
+                  return;
+                }
 
-      let teamId = null;
+                let teamId = null;
 
-      if (roleChoice === "athlete") {
+                if (roleChoice === "athlete") {
 
-        if (!inviteCode.trim()) {
-          alert("Invite code required.");
-          return;
-        }
+                  if (!inviteCode.trim()) {
+                    alert("Invite code required.");
+                    return;
+                  }
 
-        const q = query(
-          collection(db, "teams"),
-          where("inviteCode", "==", inviteCode.trim().toUpperCase())
-        );
+                  const q = query(
+                    collection(db, "teams"),
+                    where("inviteCode", "==", inviteCode.trim().toUpperCase())
+                  );
 
-        const snap = await getDocs(q);
+                  const snap = await getDocs(q);
 
-        if (snap.empty) {
-          alert("Invalid invite code.");
-          return;
-        }
+                  if (snap.empty) {
+                    alert("Invalid invite code.");
+                    return;
+                  }
 
-        teamId = snap.docs[0].id;
-      }
+                  teamId = snap.docs[0].id;
+                }
 
-      // ✅ Create Auth user and get credential object
-     const cred = await createUserWithEmailAndPassword(auth, email, password);
-const uid = cred.user.uid;
+                const cred = await createUserWithEmailAndPassword(auth, email, password);
+                const uid = cred.user.uid;
 
-      // ✅ Create Firestore profile using UID from cred
-      await setDoc(doc(db, "users", uid), {
-        displayName: displayName.trim(),
-        role: roleChoice,
-        teamId: teamId || null,
-        createdAt: serverTimestamp()
-      });
+                await setDoc(doc(db, "users", uid), {
+                  displayName: displayName.trim(),
+                  role: roleChoice,
+                  teamId: teamId || null,
+                  createdAt: serverTimestamp()
+                });
 
-      if (roleChoice === "athlete" && teamId) {
+                if (roleChoice === "athlete" && teamId) {
 
-        await setDoc(
-          doc(db, "users", uid, "teams", teamId),
-          {
-            role: "athlete",
-            joinedAt: serverTimestamp()
-          }
-        );
+                  await setDoc(
+                    doc(db, "users", uid, "teams", teamId),
+                    {
+                      role: "athlete",
+                      joinedAt: serverTimestamp()
+                    }
+                  );
 
-        await updateDoc(
-          doc(db, "teams", teamId),
-          {
-            members: arrayUnion(uid)
-          }
-        );
-      }
+                  await updateDoc(
+                    doc(db, "teams", teamId),
+                    {
+                      members: arrayUnion(uid)
+                    }
+                  );
+                }
 
-    } else {
+              } else {
+                await signInWithEmailAndPassword(auth, email, password);
+              }
 
-      await signInWithEmailAndPassword(auth, email, password);
-
-    }
-
-  } catch (err) {
-    console.error("Auth error:", err);
-    alert(err.message);
-  }
-}}
+            } catch (err) {
+              console.error("Auth error:", err);
+              alert(err.message);
+            }
+          }}
         >
           {isRegistering ? "Register" : "Sign In"}
         </button>
@@ -264,12 +262,25 @@ const uid = cred.user.uid;
         <button onClick={() => setIsRegistering(!isRegistering)}>
           {isRegistering ? "Already have an account? Sign In" : "Need an account? Register"}
         </button>
+
       </div>
     );
   }
-if (!profile?.teamId && profile.role === "athlete") {
-  return <div className="loading">Joining team...</div>;
-}
+
+  /* ================= SAFETY GUARDS ================= */
+
+  if (loadingProfile) {
+    return <div className="loading">Loading profile...</div>;
+  }
+
+  if (!profile) {
+    return <div className="loading">Finalizing account...</div>;
+  }
+
+  if (profile && profile.role === "athlete" && !profile.teamId) {
+    return <div className="loading">Joining team...</div>;
+  }
+
   /* ================= MAIN APP ================= */
 
   return (
@@ -283,7 +294,7 @@ if (!profile?.teamId && profile.role === "athlete") {
         <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
         <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
 
-        {profile?.role === "coach" && (
+        {profile.role === "coach" && (
           <>
             <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
             <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
@@ -309,10 +320,10 @@ if (!profile?.teamId && profile.role === "athlete") {
             {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
             {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
             {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
-            {activeTab === "deep" && profile?.role==="coach" && <AthleteDeepDive team={activeTeam} />}
-            {activeTab === "coach" && profile?.role==="coach" && <CoachDashboard team={activeTeam} />}
-            {activeTab === "program" && profile?.role==="coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "createTeam" && profile?.role==="coach" && <CreateTeam profile={profile} />}
+            {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
+            {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
+            {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
+            {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
             {activeTab === "account" && <Account profile={profile} />}
 
           </motion.div>
