@@ -129,7 +129,7 @@ export default function Workouts({ profile, team }) {
 
   /* ================= SAVE WORKOUT ================= */
 
-  const saveWorkout = async () => {
+ const saveWorkout = async () => {
 
   if (!team?.id) {
     alert("Team not loaded.");
@@ -159,19 +159,19 @@ export default function Workouts({ profile, team }) {
 
   try {
 
-    // 1️⃣ Save workout FIRST
+    // 1️⃣ Save workout
     await addDoc(collection(db, "workouts"), {
       athleteId,
       athleteName,
       teamId: team.id,
       exercise,
-      weight: Number(weight),
+      weight: Number(selectedWeight),
       selectionValue,
       result,
       createdAt: serverTimestamp()
     });
 
-    // 2️⃣ If Max + Pass → Update seasonMax
+    // 2️⃣ If Max + Pass → Update max
     if (selectionValue === "Max" && result === "Pass") {
 
       await setDoc(
@@ -179,13 +179,13 @@ export default function Workouts({ profile, team }) {
         {
           athleteId,
           exercise,
-          max: Number(weight),
+          max: Number(selectedWeight),
           updatedAt: serverTimestamp()
         }
       );
     }
 
-    // 3️⃣ SUCCESS FLASH ALWAYS LAST
+    // 3️⃣ Success flash
     setSuccessFlash(true);
     setTimeout(() => setSuccessFlash(false), 1000);
 
