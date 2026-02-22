@@ -169,6 +169,11 @@ const saveWorkout = async () => {
         Save Workout
       </button>
 
+      {successFlash && (
+        <div className="success-toast">
+          ✅ Workout Saved
+        </div>
+      )}
     </div>
   );
 }
