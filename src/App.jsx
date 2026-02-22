@@ -182,7 +182,7 @@ export default function App() {
         )}
 
         <button
-         onClick={async () => {
+       onClick={async () => {
   try {
 
     if (isRegistering) {
@@ -216,20 +216,16 @@ export default function App() {
         teamId = snap.docs[0].id;
       }
 
-      // 1️⃣ Create Auth account
-      await createUserWithEmailAndPassword(auth, email, password);
+      // ✅ Create Auth user and get credential object
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
 
-      // 2️⃣ Wait for auth state to be ready
-      const currentUser = auth.currentUser;
+      const uid = cred.user.uid;
 
-      if (!currentUser) {
-        alert("Authentication failed. Try again.");
-        return;
-      }
-
-      const uid = currentUser.uid;
-
-      // 3️⃣ Create user profile in Firestore
+      // ✅ Create Firestore profile using UID from cred
       await setDoc(doc(db, "users", uid), {
         displayName: displayName.trim(),
         role: roleChoice,
@@ -237,7 +233,6 @@ export default function App() {
         createdAt: serverTimestamp()
       });
 
-      // 4️⃣ If athlete → join team
       if (roleChoice === "athlete" && teamId) {
 
         await setDoc(
@@ -248,13 +243,12 @@ export default function App() {
           }
         );
 
-        await setDoc(
+        await updateDoc(
           doc(db, "teams", teamId),
           {
-          members: arrayUnion(uid)
-        },
-        {merge: true}
-      );
+            members: arrayUnion(uid)
+          }
+        );
       }
 
     } else {
