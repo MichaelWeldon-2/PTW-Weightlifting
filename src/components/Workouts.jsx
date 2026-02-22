@@ -2,15 +2,12 @@ import { useEffect, useState } from "react";
 import {
   collection,
   addDoc,
-  setDoc,
-  getDocs,
   query,
   where,
   onSnapshot,
   serverTimestamp,
-  doc,
-  getDoc,
-  documentId
+  documentId,
+  getDocs
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -21,6 +18,10 @@ export default function Workouts({ profile, team }) {
   const [exercise, setExercise] = useState("Bench");
   const [weight, setWeight] = useState(135);
   const [result, setResult] = useState("Pass");
+
+  const [percentageMode, setPercentageMode] = useState(false);
+  const [max, setMax] = useState(0);
+
   const [successFlash, setSuccessFlash] = useState(false);
 
   /* ================= LOAD TEAM ATHLETES ================= */
@@ -32,90 +33,118 @@ export default function Workouts({ profile, team }) {
       return;
     }
 
-    const memberIds = team.members;
+    const q = query(
+      collection(db, "users"),
+      where(documentId(), "in", team.members.slice(0, 10))
+    );
 
-    const chunks = [];
-    for (let i = 0; i < memberIds.length; i += 10) {
-      chunks.push(memberIds.slice(i, i + 10));
-    }
+    const unsub = onSnapshot(q, snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => u.role === "athlete");
 
-    const results = [];
-
-    chunks.forEach(chunk => {
-
-      const q = query(
-        collection(db, "users"),
-        where(documentId(), "in", chunk)
-      );
-
-      onSnapshot(q, snap => {
-        snap.docs.forEach(d => {
-          const data = d.data();
-          if (data.role === "athlete") {
-            results.push({ id: d.id, ...data });
-          }
-        });
-
-        setAthletes([...results]);
-      });
+      setAthletes(list);
     });
+
+    return () => unsub();
 
   }, [team]);
 
+  /* ================= LOAD MAX FOR PERCENTAGE MODE ================= */
+
+  useEffect(() => {
+
+    if (!percentageMode) return;
+
+    const athleteId =
+      profile?.role === "coach"
+        ? selectedAthlete
+        : profile?.uid;
+
+    if (!athleteId) return;
+
+    const loadMax = async () => {
+
+      const q = query(
+        collection(db, "seasonMaxes"),
+        where("athleteId", "==", athleteId),
+        where("exercise", "==", exercise)
+      );
+
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        setMax(snap.docs[0].data().max || 0);
+      } else {
+        setMax(0);
+      }
+    };
+
+    loadMax();
+
+  }, [percentageMode, exercise, selectedAthlete, profile]);
+
   /* ================= SAVE WORKOUT ================= */
-const saveWorkout = async () => {
 
-  if (!team?.id) {
-    alert("Team not loaded.");
-    return;
-  }
+  const saveWorkout = async () => {
 
-  const athleteId =
-    profile?.role === "coach"
-      ? selectedAthlete
-      : profile?.uid;
-
-  if (!athleteId) {
-    alert("Select athlete");
-    return;
-  }
-
-  // If coach, get athlete name from dropdown list
-  let athleteName = profile?.displayName;
-
-  if (profile?.role === "coach") {
-    const selected = athletes.find(a => a.id === selectedAthlete);
-    if (!selected) {
-      alert("Invalid athlete selection.");
+    if (!team?.id) {
+      alert("Team not loaded.");
       return;
     }
-    athleteName = selected.displayName;
-  }
 
-  try {
+    const athleteId =
+      profile?.role === "coach"
+        ? selectedAthlete
+        : profile?.uid;
 
-    await addDoc(collection(db, "workouts"), {
-      athleteId,
-      athleteName,
-      teamId: team.id,
-      exercise,
-      weight: Number(weight),
-      result,
-      createdAt: serverTimestamp()
-    });
-
-    setSuccessFlash(true);
-    setTimeout(() => setSuccessFlash(false), 800);
-
-    if (profile?.role === "coach") {
-      setSelectedAthlete("");
+    if (!athleteId) {
+      alert("Select athlete");
+      return;
     }
 
-  } catch (err) {
-    console.error("Workout save error:", err);
-    alert(err.message);
-  }
-};
+    let athleteName = profile?.displayName;
+
+    if (profile?.role === "coach") {
+      const selected = athletes.find(a => a.id === selectedAthlete);
+      if (!selected) {
+        alert("Invalid athlete selection.");
+        return;
+      }
+      athleteName = selected.displayName;
+    }
+
+    const finalWeight = percentageMode
+      ? Math.round((Number(weight) / 100) * Number(max))
+      : Number(weight);
+
+    try {
+
+      await addDoc(collection(db, "workouts"), {
+        athleteId,
+        athleteName,
+        teamId: team.id,
+        exercise,
+        weight: finalWeight,
+        percentageMode,
+        percentageUsed: percentageMode ? Number(weight) : null,
+        result,
+        createdAt: serverTimestamp()
+      });
+
+      setSuccessFlash(true);
+      setTimeout(() => setSuccessFlash(false), 800);
+
+      if (profile?.role === "coach") {
+        setSelectedAthlete("");
+      }
+
+    } catch (err) {
+      console.error("Workout save error:", err);
+      alert(err.message);
+    }
+  };
+
   /* ================= UI ================= */
 
   return (
@@ -137,6 +166,15 @@ const saveWorkout = async () => {
         </select>
       )}
 
+      <label style={{ marginBottom: 10 }}>
+        <input
+          type="checkbox"
+          checked={percentageMode}
+          onChange={() => setPercentageMode(!percentageMode)}
+        />
+        {" "}Use Percentage
+      </label>
+
       <select
         value={exercise}
         onChange={e => setExercise(e.target.value)}
@@ -146,16 +184,29 @@ const saveWorkout = async () => {
         <option>PowerClean</option>
       </select>
 
-      <select
-        value={weight}
-        onChange={e => setWeight(e.target.value)}
-      >
-        {Array.from({ length: 60 }, (_, i) => 95 + i * 5).map(w => (
-          <option key={w} value={w}>
-            {w} lbs
-          </option>
-        ))}
-      </select>
+      {percentageMode ? (
+        <select
+          value={weight}
+          onChange={e => setWeight(e.target.value)}
+        >
+          {Array.from({ length: 31 }, (_, i) => 50 + i * 5).map(p => (
+            <option key={p} value={p}>
+              {p}%
+            </option>
+          ))}
+        </select>
+      ) : (
+        <select
+          value={weight}
+          onChange={e => setWeight(e.target.value)}
+        >
+          {Array.from({ length: 60 }, (_, i) => 95 + i * 5).map(w => (
+            <option key={w} value={w}>
+              {w} lbs
+            </option>
+          ))}
+        </select>
+      )}
 
       <select
         value={result}
@@ -170,10 +221,11 @@ const saveWorkout = async () => {
       </button>
 
       {successFlash && (
-        <div className="success-toast">
+        <div style={{ marginTop: 12, color: "var(--success)" }}>
           ✅ Workout Saved
         </div>
       )}
+
     </div>
   );
 }
