@@ -3,7 +3,9 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 
 export default function CoachDashboard({ profile }) {
-
+const fatigue = workouts.length > 20 ? "High"
+               : workouts.length > 10 ? "Moderate"
+                : "Low";
   const [workouts, setWorkouts] = useState([]);
   const [timeFilter, setTimeFilter] = useState(30);
 
@@ -307,3 +309,39 @@ const promoteToAssistant = async (teamId, userId) => {
     { merge: true }
   );
 };
+useEffect(() => {
+
+  if (!team?.id) return;
+
+  const q = query(
+    collection(db, "workouts"),
+    where("teamId", "==", team.id)
+  );
+
+  const unsub = onSnapshot(q, snap => {
+
+    const workouts = snap.docs.map(d => d.data());
+
+    if (!workouts.length) {
+      setTopPerformer("N/A");
+      setMostImproved("N/A");
+      setTotalVolume(0);
+      return;
+    }
+
+    // Total Volume
+    const volume = workouts.reduce((acc, w) => acc + Number(w.weight || 0), 0);
+    setTotalVolume(volume);
+
+    // Top Performer (highest max)
+    const maxWorkout = workouts.reduce((a, b) =>
+      a.weight > b.weight ? a : b
+    );
+
+    setTopPerformer(maxWorkout.athleteName);
+
+  });
+
+  return () => unsub();
+
+}, [team?.id]);
