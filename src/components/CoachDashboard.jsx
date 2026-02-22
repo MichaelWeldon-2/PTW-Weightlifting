@@ -3,9 +3,7 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 
 export default function CoachDashboard({ profile }) {
-const fatigue = workouts.length > 20 ? "High"
-               : workouts.length > 10 ? "Moderate"
-                : "Low";
+
   const [workouts, setWorkouts] = useState([]);
   const [timeFilter, setTimeFilter] = useState(30);
 
@@ -49,7 +47,7 @@ const fatigue = workouts.length > 20 ? "High"
 
   }, [workouts, timeFilter]);
 
-  /* ================= INTELLIGENCE ENGINE ================= */
+  /* ================= ANALYTICS ENGINE ================= */
 
   const analytics = useMemo(() => {
 
@@ -59,15 +57,11 @@ const fatigue = workouts.length > 20 ? "High"
         totalVolume: 0,
         improving: 0,
         declining: 0,
-        alerts: 0,
-        riskIndex: [],
         athleteOfPeriod: null,
-        insights: [],
         teamRecommendations: []
       };
     }
 
-    /* SORT CHRONOLOGICALLY FOR STREAK + PROGRESSION ACCURACY */
     const sorted = [...filteredWorkouts]
       .filter(w => w.createdAt?.seconds)
       .sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
@@ -78,8 +72,6 @@ const fatigue = workouts.length > 20 ? "High"
 
     const athleteMap = {};
     const progressMap = {};
-    const streakMap = {};
-    const insights = [];
 
     sorted.forEach(w => {
 
@@ -90,34 +82,6 @@ const fatigue = workouts.length > 20 ? "High"
       totalAttempts++;
       totalVolume += weight;
       if (w.result === "Pass") totalPass++;
-
-      /* ================= STREAK TRACKING ================= */
-
-      const streakKey = `${w.athleteId}-${w.exercise}-${w.weight}`;
-
-      if (!streakMap[streakKey]) streakMap[streakKey] = 0;
-
-      if (w.result === "Fail") {
-        streakMap[streakKey]++;
-      } else {
-        streakMap[streakKey] = 0;
-      }
-
-      /* ================= PROGRESS TRACKING ================= */
-
-      const progressKey = `${w.athleteId}-${w.exercise}`;
-
-      if (!progressMap[progressKey]) {
-        progressMap[progressKey] = {
-          athleteId: w.athleteId,
-          athleteName: w.athleteName,
-          weights: []
-        };
-      }
-
-      progressMap[progressKey].weights.push(weight);
-
-      /* ================= ATHLETE AGGREGATE ================= */
 
       if (!athleteMap[w.athleteId]) {
         athleteMap[w.athleteId] = {
@@ -132,64 +96,32 @@ const fatigue = workouts.length > 20 ? "High"
       athleteMap[w.athleteId].attempts++;
       if (w.result === "Fail") athleteMap[w.athleteId].fails++;
 
-    });
+      if (!progressMap[w.athleteId]) {
+        progressMap[w.athleteId] = [];
+      }
 
-    /* ================= PASS RATE (SAFE) ================= */
+      progressMap[w.athleteId].push(weight);
+
+    });
 
     const passRate =
       totalAttempts > 0
         ? Math.round((totalPass / totalAttempts) * 100)
         : 0;
 
-    /* ================= IMPROVEMENT ================= */
-
     let improving = 0;
     let declining = 0;
 
-    Object.values(progressMap).forEach(p => {
-      if (p.weights.length >= 2) {
-        if (p.weights[p.weights.length - 1] > p.weights[0]) improving++;
-        if (p.weights[p.weights.length - 1] < p.weights[0]) declining++;
+    Object.values(progressMap).forEach(weights => {
+      if (weights.length >= 2) {
+        if (weights[weights.length - 1] > weights[0]) improving++;
+        if (weights[weights.length - 1] < weights[0]) declining++;
       }
     });
-
-    /* ================= ALERT COUNT ================= */
-
-    const alerts =
-      Object.values(streakMap)
-        .filter(v => v >= 3).length;
-
-    /* ================= RISK INDEX ================= */
-
-    const riskIndex =
-      Object.values(athleteMap)
-        .map(a => {
-
-          const failRate =
-            a.attempts > 0 ? a.fails / a.attempts : 0;
-
-          let score = 0;
-
-          if (failRate >= 0.5) score += 2;
-          else if (failRate >= 0.3) score += 1;
-
-          return {
-            name: a.name,
-            status:
-              score >= 2 ? "Critical" :
-              score === 1 ? "Warning" :
-              "Stable"
-          };
-
-        });
-
-    /* ================= ATHLETE OF PERIOD ================= */
 
     const athleteOfPeriod =
       Object.values(athleteMap)
         .sort((a,b)=>b.volume - a.volume)[0] || null;
-
-    /* ================= TEAM PROGRAMMING RECOMMENDATIONS ================= */
 
     const teamRecommendations = [];
 
@@ -205,33 +137,12 @@ const fatigue = workouts.length > 20 ? "High"
       );
     }
 
-    /* ================= SMART INSIGHTS ================= */
-
-    Object.values(progressMap).forEach(p => {
-
-      if (p.weights.length >= 6) {
-
-        const last6 = p.weights.slice(-6);
-
-        if (Math.max(...last6) - Math.min(...last6) <= 5) {
-          insights.push({
-            message: `${p.athleteName} plateauing`
-          });
-        }
-
-      }
-
-    });
-
     return {
       passRate,
       totalVolume,
       improving,
       declining,
-      alerts,
-      riskIndex,
       athleteOfPeriod,
-      insights,
       teamRecommendations
     };
 
@@ -264,6 +175,13 @@ const fatigue = workouts.length > 20 ? "High"
 
       <hr />
 
+      <h3>🏆 Athlete of Period</h3>
+      <p>
+        {analytics.athleteOfPeriod?.name || "N/A"}
+      </p>
+
+      <hr />
+
       <h3>🧭 Team Programming Direction</h3>
 
       {analytics.teamRecommendations.length === 0 && (
@@ -273,18 +191,6 @@ const fatigue = workouts.length > 20 ? "High"
       {analytics.teamRecommendations.map((r, i) => (
         <div key={i} className="recommendation-box">
           {r}
-        </div>
-      ))}
-
-      <hr />
-
-      <h3>🔮 Smart Insights</h3>
-
-      {analytics.insights.length === 0 && <p>No alerts</p>}
-
-      {analytics.insights.map((i, index) => (
-        <div key={index} className="insight-card">
-          {i.message}
         </div>
       ))}
 
@@ -302,46 +208,3 @@ function Metric({ label, value }) {
     </div>
   );
 }
-const promoteToAssistant = async (teamId, userId) => {
-  await setDoc(
-    doc(db, "teamMembers", teamId, "members", userId),
-    { role: "assistant" },
-    { merge: true }
-  );
-};
-useEffect(() => {
-
-  if (!team?.id) return;
-
-  const q = query(
-    collection(db, "workouts"),
-    where("teamId", "==", team.id)
-  );
-
-  const unsub = onSnapshot(q, snap => {
-
-    const workouts = snap.docs.map(d => d.data());
-
-    if (!workouts.length) {
-      setTopPerformer("N/A");
-      setMostImproved("N/A");
-      setTotalVolume(0);
-      return;
-    }
-
-    // Total Volume
-    const volume = workouts.reduce((acc, w) => acc + Number(w.weight || 0), 0);
-    setTotalVolume(volume);
-
-    // Top Performer (highest max)
-    const maxWorkout = workouts.reduce((a, b) =>
-      a.weight > b.weight ? a : b
-    );
-
-    setTopPerformer(maxWorkout.athleteName);
-
-  });
-
-  return () => unsub();
-
-}, [team?.id]);
