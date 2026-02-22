@@ -33,6 +33,18 @@ import Account from "./components/Account";
 
 import "./App.css";
 
+function NavItem({ icon, label, active, onClick }) {
+  return (
+    <div
+      className={`bottom-nav-item ${active ? "active" : ""}`}
+      onClick={onClick}
+    >
+      <div className="nav-icon">{icon}</div>
+      <div className="nav-label">{label}</div>
+    </div>
+  );
+}
+
 export default function App() {
 
   const [user, setUser] = useState(null);
@@ -264,7 +276,8 @@ export default function App() {
         </button>
 
       </div>
-    );
+      );
+    }
   }
 
   /* ================= SAFETY GUARDS ================= */
@@ -284,60 +297,62 @@ export default function App() {
   /* ================= MAIN APP ================= */
 
   return (
-    <div className="app">
+  <div className="app">
 
-      <div className="sidebar">
-        <h3 style={{ marginBottom: 20 }}>PTW</h3>
+    {/* DESKTOP SIDEBAR */}
+    <div className="sidebar">
+      <h3 style={{ marginBottom: 20 }}>PTW</h3>
 
-        <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
-        <SidebarItem label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
-        <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
-        <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
+      <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+      <SidebarItem label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+      <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+      <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
 
-        {profile.role === "coach" && (
-          <>
-            <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
-            <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
-            <SidebarItem label="Program Builder" active={activeTab==="program"} onClick={()=>setActiveTab("program")} />
-            <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
-          </>
-        )}
+      {profile?.role === "coach" && (
+        <>
+          <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
+          <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
+          <SidebarItem label="Program Builder" active={activeTab==="program"} onClick={()=>setActiveTab("program")} />
+          <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
+        </>
+      )}
 
-        <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
-      </div>
+  <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
+</div>
 
-      <div className="content">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab + activeTeam?.id}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.25 }}
-          >
-
-            {activeTab === "dashboard" && <Dashboard profile={profile} team={activeTeam} />}
-            {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
-            {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
-            {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
-            {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
-            {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
-            {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
-            {activeTab === "account" && <Account profile={profile} />}
-
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
+{/* MAIN CONTENT */}
+    <div className="content">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab + activeTeam?.id}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.25 }}
+        >
+          {activeTab === "dashboard" && <Dashboard profile={profile} team={activeTeam} />}
+          {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
+          {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
+          {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
+          {activeTab === "deep" && profile?.role==="coach" && <AthleteDeepDive team={activeTeam} />}
+          {activeTab === "coach" && profile?.role==="coach" && <CoachDashboard team={activeTeam} />}
+          {activeTab === "program" && profile?.role==="coach" && <ProgramBuilder team={activeTeam} />}
+          {activeTab === "createTeam" && profile?.role==="coach" && <CreateTeam profile={profile} />}
+          {activeTab === "account" && <Account profile={profile} />}
+        </motion.div>
+      </AnimatePresence>
     </div>
-  );
-}
 
-function SidebarItem({ label, active, onClick }) {
-  return (
-    <div className={`sidebar-item ${active ? "active" : ""}`} onClick={onClick}>
-      {label}
+    {/* ✅ MOBILE BOTTOM NAV */}
+    <div className="bottom-nav">
+      <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+      <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+      <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+      {profile?.role === "coach" && (
+        <NavItem icon="🧠" label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
+      )}
+      <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
     </div>
-  );
-}
+
+  </div>
+);

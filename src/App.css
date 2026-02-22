@@ -87,7 +87,7 @@ input, select {
 
 .app {
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
 }
 
 .content {
@@ -257,6 +257,7 @@ input, select {
 
   .app {
     flex-direction: column;
+    min-height: 100vh;
   }
 
   .sidebar {
@@ -279,10 +280,5 @@ input, select {
 
   .bottom-nav {
     display: flex;
-  }
-}
-@media (max-width: 768px) {
-  body {
-    background: red !important;
   }
 }
