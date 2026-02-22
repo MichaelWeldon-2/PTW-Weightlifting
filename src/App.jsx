@@ -49,7 +49,7 @@ export default function App() {
   const [displayName, setDisplayName] = useState("");
 
   const [isRegistering, setIsRegistering] = useState(false);
-  const [roleChoice, setRoleChoice] = useState("athlete");
+  const [roleChoice, setRoleChoice] =  useState("athlete");
   const [inviteCode, setInviteCode] = useState("");
 
   /* ================= LOAD USER TEAMS ================= */
@@ -267,7 +267,9 @@ const uid = cred.user.uid;
       </div>
     );
   }
-
+if (!profile?.teamId && profile.role === "athlete") {
+  return <div className="loading">Joining team...</div>;
+}
   /* ================= MAIN APP ================= */
 
   return (
