@@ -34,21 +34,29 @@ export default function Workouts({ profile, team }) {
 
   /* ================= LOAD TEAM TEMPLATE ================= */
 
-  useEffect(() => {
-    if (!team?.id) return;
+ useEffect(() => {
+  if (!team?.id) return;
 
-    const loadTemplate = async () => {
+  const loadTemplate = async () => {
+    try {
       const snap = await getDoc(doc(db, "teamTemplates", team.id));
-      if (snap.exists()) {
-        setTeamTemplate(snap.data().template);
+
+      const firestoreTemplate = snap.data()?.template;
+
+      if (firestoreTemplate && typeof firestoreTemplate === "object") {
+        setTeamTemplate(firestoreTemplate);
       } else {
         setTeamTemplate(defaultTemplate);
       }
-    };
 
-    loadTemplate();
-  }, [team?.id]);
+    } catch (err) {
+      console.error("Template load error:", err);
+      setTeamTemplate(defaultTemplate);
+    }
+  };
 
+  loadTemplate();
+}, [team?.id]);
   /* ================= LOAD TEAM ATHLETES ================= */
 
   useEffect(() => {
