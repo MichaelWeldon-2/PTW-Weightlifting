@@ -1,21 +1,10 @@
 export function calculateSets(template, baseWeight) {
-  return template.map(set => {
 
-    if (set.percent === "MAX") {
-      return {
-        reps: set.reps,
-        percent: "MAX",
-        weight: "MAX ATTEMPT"
-      };
-    }
+  if (!template || !Array.isArray(template)) return [];
 
-    const raw = set.percent * baseWeight;
-    const rounded = Math.round(raw / 5) * 5;
+  return template.map(set => ({
+    reps: set.reps,
+    weight: Math.round(baseWeight * (set.percent || 1))
+  }));
 
-    return {
-      reps: set.reps,
-      percent: set.percent,
-      weight: rounded
-    };
-  });
 }

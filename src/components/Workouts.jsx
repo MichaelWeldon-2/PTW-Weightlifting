@@ -108,27 +108,30 @@ export default function Workouts({ profile, team }) {
 
   /* ================= CALCULATE SETS ================= */
 
-  const calculatedSets = useMemo(() => {
+ const calculatedSets = useMemo(() => {
 
-    const baseWeight =
-      exercise === "Squat" && selectionValue !== "Max"
-        ? Math.round((Number(selectionValue) / 100) * currentMax)
-        : selectedWeight;
+  if (!teamTemplate) return [];
 
-    if (selectionValue === "Max") {
-      return calculateSets(teamTemplate["Max"], baseWeight);
-    }
+  const baseWeight =
+    exercise === "Squat" && selectionValue !== "Max"
+      ? Math.round((Number(selectionValue) / 100) * currentMax)
+      : selectedWeight;
 
-    if (exercise === "Squat") {
-      return calculateSets(teamTemplate["Percentage"], baseWeight);
-    }
+  let template;
 
-    return calculateSets(
-      teamTemplate[`Box${selectionValue}`],
-      baseWeight
-    );
+  if (selectionValue === "Max") {
+    template = teamTemplate["Max"];
+  } else if (exercise === "Squat") {
+    template = teamTemplate["Percentage"];
+  } else {
+    template = teamTemplate[`Box${selectionValue}`];
+  }
 
-  }, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
+  if (!template) return [];
+
+  return calculateSets(template, baseWeight);
+
+}, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
 
   /* ================= SAVE WORKOUT ================= */
 
@@ -299,7 +302,7 @@ export default function Workouts({ profile, team }) {
 
         {/* Preview Sets */}
         <div style={{ marginTop: 15 }}>
-          {calculatedSets?.map((set, index) => (
+        {Array.isArray(calculatedSets) && calculatedSets.map((set, index) => (
             <div key={index}>
               Set {index + 1}: {set.reps} reps x {set.weight} lbs
             </div>
