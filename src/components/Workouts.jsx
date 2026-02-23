@@ -37,27 +37,28 @@ const [maxLoaded, setMaxLoaded] = useState(false);
   /* ================= LOAD TEAM TEMPLATE ================= */
 
   useEffect(() => {
-    if (!team?.id) return;
+  if (!team?.id) return;
 
-    const loadTemplate = async () => {
-      try {
-        const snap = await getDoc(doc(db, "teamTemplates", team.id));
-        const firestoreTemplate = snap.data()?.template;
+  const loadTemplate = async () => {
+    try {
+      const snap = await getDoc(doc(db, "teamTemplates", team.id));
 
-        if (firestoreTemplate && typeof firestoreTemplate === "object") {
-          setTeamTemplate(firestoreTemplate);
-        } else {
-          setTeamTemplate(defaultTemplate);
-        }
+      const firestoreTemplate = snap.data()?.template;
 
-      } catch (err) {
-        console.error("Template load error:", err);
-        setTeamTemplate(defaultTemplate);
+      if (
+        firestoreTemplate &&
+        JSON.stringify(firestoreTemplate) !== JSON.stringify(teamTemplate)
+      ) {
+        setTeamTemplate(firestoreTemplate);
       }
-    };
 
-    loadTemplate();
-  }, [team?.id]);
+    } catch (err) {
+      console.error("Template load error:", err);
+    }
+  };
+
+  loadTemplate();
+}, [team?.id]);
 
   /* ================= LOAD TEAM ATHLETES ================= */
 
