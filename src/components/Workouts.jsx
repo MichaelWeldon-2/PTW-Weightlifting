@@ -17,8 +17,10 @@ import { calculateSets } from "../utils/calculateSets";
 
 export default function Workouts({ profile, team }) {
 
+  /* ================= STATE ================= */
+
   const [athletes, setAthletes] = useState([]);
-  const [selectedAthlete, setSelectedAthlete] = "";
+  const [selectedAthlete, setSelectedAthlete] = useState(""); // ✅ FIXED
 
   const [exercise, setExercise] = useState("Bench");
   const [selectionValue, setSelectionValue] = useState("1");
@@ -34,29 +36,29 @@ export default function Workouts({ profile, team }) {
 
   /* ================= LOAD TEAM TEMPLATE ================= */
 
- useEffect(() => {
-  if (!team?.id) return;
+  useEffect(() => {
+    if (!team?.id) return;
 
-  const loadTemplate = async () => {
-    try {
-      const snap = await getDoc(doc(db, "teamTemplates", team.id));
+    const loadTemplate = async () => {
+      try {
+        const snap = await getDoc(doc(db, "teamTemplates", team.id));
+        const firestoreTemplate = snap.data()?.template;
 
-      const firestoreTemplate = snap.data()?.template;
+        if (firestoreTemplate && typeof firestoreTemplate === "object") {
+          setTeamTemplate(firestoreTemplate);
+        } else {
+          setTeamTemplate(defaultTemplate);
+        }
 
-      if (firestoreTemplate && typeof firestoreTemplate === "object") {
-        setTeamTemplate(firestoreTemplate);
-      } else {
+      } catch (err) {
+        console.error("Template load error:", err);
         setTeamTemplate(defaultTemplate);
       }
+    };
 
-    } catch (err) {
-      console.error("Template load error:", err);
-      setTeamTemplate(defaultTemplate);
-    }
-  };
+    loadTemplate();
+  }, [team?.id]);
 
-  loadTemplate();
-}, [team?.id]);
   /* ================= LOAD TEAM ATHLETES ================= */
 
   useEffect(() => {
@@ -101,45 +103,46 @@ export default function Workouts({ profile, team }) {
 
     loadMaxes();
 
-  }, [selectedAthlete, profile?.uid]);
+  }, [selectedAthlete, profile?.uid, isCoach]);
 
-  /* ================= GET ACTIVE MAX ================= */
+  /* ================= CURRENT MAX ================= */
 
   const currentMax = useMemo(() => {
-    const map = {
+    return {
       Bench: maxes?.benchMax || 0,
       Squat: maxes?.squatMax || 0,
       PowerClean: maxes?.powerCleanMax || 0
-    };
-    return map[exercise] || 0;
+    }[exercise] || 0;
   }, [maxes, exercise]);
 
-  /* ================= CALCULATE SETS ================= */
+  /* ================= CALCULATE SETS (STABLE) ================= */
 
- const calculatedSets = useMemo(() => {
+  const calculatedSets = useMemo(() => {
 
-  if (!teamTemplate) return [];
+    if (!teamTemplate || typeof teamTemplate !== "object") return [];
 
-  const baseWeight =
-    exercise === "Squat" && selectionValue !== "Max"
-      ? Math.round((Number(selectionValue) / 100) * currentMax)
-      : selectedWeight;
+    const baseWeight =
+      exercise === "Squat" && selectionValue !== "Max"
+        ? Math.round((Number(selectionValue) / 100) * currentMax)
+        : selectedWeight;
 
-  let template;
+    let template;
 
-  if (selectionValue === "Max") {
-    template = teamTemplate["Max"];
-  } else if (exercise === "Squat") {
-    template = teamTemplate["Percentage"];
-  } else {
-    template = teamTemplate[`Box${selectionValue}`];
-  }
+    if (selectionValue === "Max") {
+      template = teamTemplate["Max"];
+    } else if (exercise === "Squat") {
+      template = teamTemplate["Percentage"];
+    } else {
+      template = teamTemplate[`Box${selectionValue}`];
+    }
 
-  if (!template) return [];
+    if (!template || !Array.isArray(template)) return [];
 
-  return calculateSets(template, baseWeight);
+    const resultSets = calculateSets(template, baseWeight);
 
-}, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
+    return Array.isArray(resultSets) ? resultSets : [];
+
+  }, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
 
   /* ================= SAVE WORKOUT ================= */
 
@@ -150,8 +153,7 @@ export default function Workouts({ profile, team }) {
       return;
     }
 
-    const athleteId =
-      isCoach ? selectedAthlete : profile?.uid;
+    const athleteId = isCoach ? selectedAthlete : profile?.uid;
 
     if (!athleteId) {
       alert("Select athlete");
@@ -171,7 +173,6 @@ export default function Workouts({ profile, team }) {
 
     try {
 
-      // 1️⃣ Save workout
       await addDoc(collection(db, "workouts"), {
         athleteId,
         athleteName,
@@ -184,7 +185,8 @@ export default function Workouts({ profile, team }) {
         createdAt: serverTimestamp()
       });
 
-      // 2️⃣ Update max ONLY if Pass + Max
+      /* ===== UPDATE MAX ONLY IF PASS + MAX ===== */
+
       if (selectionValue === "Max" && result === "Pass") {
 
         const fieldMap = {
@@ -205,10 +207,8 @@ export default function Workouts({ profile, team }) {
         );
       }
 
-      // 3️⃣ Success flash
       setSuccessFlash(true);
       setTimeout(() => setSuccessFlash(false), 1000);
-
       setOverrideReason("");
 
     } catch (err) {
@@ -310,7 +310,7 @@ export default function Workouts({ profile, team }) {
 
         {/* Preview Sets */}
         <div style={{ marginTop: 15 }}>
-        {Array.isArray(calculatedSets) && calculatedSets.map((set, index) => (
+          {calculatedSets.length > 0 && calculatedSets.map((set, index) => (
             <div key={index}>
               Set {index + 1}: {set.reps} reps x {set.weight} lbs
             </div>
@@ -326,7 +326,6 @@ export default function Workouts({ profile, team }) {
           <option>Override</option>
         </select>
 
-        {/* Override Reason Field */}
         {result === "Override" && (
           <input
             value={overrideReason}
