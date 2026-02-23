@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 
-export default function CoachDashboard({ profile }) {
+export default function CoachDashboard({ team }) {
 
   const [workouts, setWorkouts] = useState([]);
   const [timeFilter, setTimeFilter] = useState(30);
@@ -11,14 +11,14 @@ export default function CoachDashboard({ profile }) {
 
   useEffect(() => {
 
-    if (!profile?.teamId) {
+    if (!team?.id) {
       setWorkouts([]);
       return;
     }
 
     const q = query(
       collection(db, "workouts"),
-      where("teamId", "==", profile.teamId)
+      where("teamId", "==", team.id)
     );
 
     const unsub = onSnapshot(q, snap => {
@@ -32,7 +32,7 @@ export default function CoachDashboard({ profile }) {
 
     return () => unsub();
 
-  }, [profile?.teamId]);
+  }, [team?.id]);
 
   /* ================= TIME FILTER ================= */
 
@@ -47,7 +47,7 @@ export default function CoachDashboard({ profile }) {
 
   }, [workouts, timeFilter]);
 
-  /* ================= INTELLIGENCE ENGINE ================= */
+  /* ================= ADVANCED INTELLIGENCE ENGINE ================= */
 
   const analytics = useMemo(() => {
 
@@ -92,11 +92,8 @@ export default function CoachDashboard({ profile }) {
 
       if (!streakMap[streakKey]) streakMap[streakKey] = 0;
 
-      if (w.result === "Fail") {
-        streakMap[streakKey]++;
-      } else {
-        streakMap[streakKey] = 0;
-      }
+      if (w.result === "Fail") streakMap[streakKey]++;
+      else streakMap[streakKey] = 0;
 
       /* ===== PROGRESS TRACKING ===== */
 
@@ -233,14 +230,16 @@ export default function CoachDashboard({ profile }) {
 
       <h2>🧠 Coach Intelligence Dashboard</h2>
 
-      <select
-        value={timeFilter}
-        onChange={e => setTimeFilter(Number(e.target.value))}
-      >
-        <option value={7}>Last 7 Days</option>
-        <option value={30}>Last 30 Days</option>
-        <option value={90}>Last 90 Days</option>
-      </select>
+      <div style={{ marginBottom: 20 }}>
+        <select
+          value={timeFilter}
+          onChange={e => setTimeFilter(Number(e.target.value))}
+        >
+          <option value={7}>Last 7 Days</option>
+          <option value={30}>Last 30 Days</option>
+          <option value={90}>Last 90 Days</option>
+        </select>
+      </div>
 
       <div className="dashboard-grid">
         <Metric label="Pass Rate" value={`${analytics.passRate}%`} />

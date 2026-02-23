@@ -4,7 +4,8 @@ import {
   query,
   where,
   onSnapshot,
-  documentId
+  doc,
+  getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -17,18 +18,12 @@ import {
   CartesianGrid
 } from "recharts";
 
-const seasonOrder = {
-  Summer: 1,
-  Fall: 2,
-  Winter: 3,
-  Spring: 4
-};
-
 export default function AthleteProgress({ profile, team }) {
 
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("");
-  const [allData, setAllData] = useState([]);
+  const [workouts, setWorkouts] = useState([]);
+  const [maxData, setMaxData] = useState(null);
 
   /* ================= LOAD TEAM ATHLETES ================= */
 
@@ -39,39 +34,22 @@ export default function AthleteProgress({ profile, team }) {
       return;
     }
 
-    const loadAthletes = async () => {
+    const q = query(
+      collection(db, "users"),
+      where("__name__", "in", team.members.slice(0, 10))
+    );
 
-      const memberIds = team.members;
+    const unsub = onSnapshot(q, snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => u.role === "athlete");
 
-      const chunks = [];
-      for (let i = 0; i < memberIds.length; i += 10) {
-        chunks.push(memberIds.slice(i, i + 10));
-      }
+      setAthletes(list);
+    });
 
-      const results = [];
+    return () => unsub();
 
-      chunks.forEach(chunk => {
-        const q = query(
-          collection(db, "users"),
-          where(documentId(), "in", chunk)
-        );
-
-        onSnapshot(q, snap => {
-          snap.docs.forEach(d => {
-            const data = d.data();
-            if (data.role === "athlete") {
-              results.push({ id: d.id, ...data });
-            }
-          });
-
-          setAthletes([...results]);
-        });
-      });
-    };
-
-    loadAthletes();
-
-  }, [team]);
+  }, [team?.members]);
 
   /* ================= AUTO SELECT SELF ================= */
 
@@ -81,51 +59,81 @@ export default function AthleteProgress({ profile, team }) {
     }
   }, [profile]);
 
-  /* ================= LOAD SEASON DATA ================= */
+  /* ================= LOAD WORKOUTS ================= */
 
   useEffect(() => {
 
-    if (!team?.id || !selectedAthlete) {
-      setAllData([]);
+    if (!selectedAthlete) {
+      setWorkouts([]);
       return;
     }
 
     const q = query(
-      collection(db, "seasonMaxes"),
-      where("teamId", "==", team.id),
+      collection(db, "workouts"),
       where("athleteId", "==", selectedAthlete)
     );
 
     const unsub = onSnapshot(q, snap => {
-      setAllData(snap.docs.map(d => d.data()));
+      setWorkouts(
+        snap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }))
+      );
     });
 
     return () => unsub();
 
-  }, [team, selectedAthlete]);
+  }, [selectedAthlete]);
 
-  /* ================= SORT ================= */
+  /* ================= LOAD MAX DOCUMENT ================= */
+
+  useEffect(() => {
+
+    if (!selectedAthlete) {
+      setMaxData(null);
+      return;
+    }
+
+    const loadMax = async () => {
+      const snap = await getDoc(doc(db, "seasonMaxes", selectedAthlete));
+
+      if (snap.exists()) {
+        setMaxData(snap.data());
+      } else {
+        setMaxData(null);
+      }
+    };
+
+    loadMax();
+
+  }, [selectedAthlete]);
+
+  /* ================= CHART DATA ================= */
 
   const chartData = useMemo(() => {
 
-    return [...allData]
-      .sort((a, b) => {
-        if (a.year !== b.year) return a.year - b.year;
-        return seasonOrder[a.season] - seasonOrder[b.season];
-      })
-      .map(d => ({
-        label: `${d.season} ${d.year}`,
-        total: d.total || 0
+    if (!workouts.length) return [];
+
+    return workouts
+      .filter(w => w.createdAt?.seconds)
+      .sort((a, b) =>
+        a.createdAt.seconds - b.createdAt.seconds
+      )
+      .map(w => ({
+        date: new Date(w.createdAt.seconds * 1000)
+          .toLocaleDateString(),
+        weight: Number(w.weight) || 0
       }));
 
-  }, [allData]);
+  }, [workouts]);
 
   /* ================= UI ================= */
 
   return (
     <div className="card">
 
-      <h2>Performance Trends</h2>
+      <h2>📈 Athlete Progress</h2>
 
       {profile?.role === "coach" && (
         <select
@@ -143,20 +151,53 @@ export default function AthleteProgress({ profile, team }) {
 
       <hr />
 
+      {/* ================= CURRENT MAXES ================= */}
+
+      {maxData && (
+        <div className="dashboard-grid">
+
+          <div className="card metric-card">
+            <h4>Bench Max</h4>
+            <div className="metric-value">
+              {maxData.benchMax || 0} lbs
+            </div>
+          </div>
+
+          <div className="card metric-card">
+            <h4>Squat Max</h4>
+            <div className="metric-value">
+              {maxData.squatMax || 0} lbs
+            </div>
+          </div>
+
+          <div className="card metric-card">
+            <h4>Power Clean Max</h4>
+            <div className="metric-value">
+              {maxData.powerCleanMax || 0} lbs
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      <hr />
+
+      {/* ================= CHART ================= */}
+
       {chartData.length === 0 && (
-        <div>No season data available.</div>
+        <div>No workout data available.</div>
       )}
 
       {chartData.length > 0 && (
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="label" />
+            <XAxis dataKey="date" />
             <YAxis />
             <Tooltip />
             <Line
               type="monotone"
-              dataKey="total"
+              dataKey="weight"
               stroke="#0e28b1"
               strokeWidth={3}
             />
