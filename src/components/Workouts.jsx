@@ -21,7 +21,7 @@ export default function Workouts({ profile, team }) {
 
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState(""); // ✅ FIXED
-
+const [maxLoaded, setMaxLoaded] = useState(false);
   const [exercise, setExercise] = useState("Bench");
   const [selectionValue, setSelectionValue] = useState("1");
   const [selectedWeight, setSelectedWeight] = useState(135);
@@ -87,23 +87,28 @@ export default function Workouts({ profile, team }) {
 
   /* ================= LOAD ATHLETE MAXES ================= */
 
-  useEffect(() => {
+ useEffect(() => {
 
-    const athleteId = isCoach ? selectedAthlete : profile?.uid;
-    if (!athleteId) return;
+  const athleteId = isCoach ? selectedAthlete : profile?.uid;
+  if (!athleteId) return;
 
-    const loadMaxes = async () => {
-      const snap = await getDoc(doc(db, "seasonMaxes", athleteId));
-      if (snap.exists()) {
-        setMaxes(snap.data());
-      } else {
-        setMaxes({});
-      }
-    };
+  setMaxLoaded(false);
 
-    loadMaxes();
+  const loadMaxes = async () => {
+    const snap = await getDoc(doc(db, "seasonMaxes", athleteId));
 
-  }, [selectedAthlete, profile?.uid, isCoach]);
+    if (snap.exists()) {
+      setMaxes(snap.data());
+    } else {
+      setMaxes({});
+    }
+
+    setMaxLoaded(true);   // ✅ only render after this
+  };
+
+  loadMaxes();
+
+}, [selectedAthlete, profile?.uid, isCoach]);
 
   /* ================= CURRENT MAX ================= */
 
@@ -117,33 +122,30 @@ export default function Workouts({ profile, team }) {
 
   /* ================= CALCULATE SETS (STABLE) ================= */
 
-  const calculatedSets = useMemo(() => {
+ const calculatedSets = useMemo(() => {
 
-    if (!teamTemplate || typeof teamTemplate !== "object") return [];
+  if (!teamTemplate || !maxLoaded) return [];
 
-    const baseWeight =
-      exercise === "Squat" && selectionValue !== "Max"
-        ? Math.round((Number(selectionValue) / 100) * currentMax)
-        : selectedWeight;
+  const baseWeight =
+    exercise === "Squat" && selectionValue !== "Max"
+      ? Math.round((Number(selectionValue) / 100) * currentMax)
+      : selectedWeight;
 
-    let template;
+  let template;
 
-    if (selectionValue === "Max") {
-      template = teamTemplate["Max"];
-    } else if (exercise === "Squat") {
-      template = teamTemplate["Percentage"];
-    } else {
-      template = teamTemplate[`Box${selectionValue}`];
-    }
+  if (selectionValue === "Max") {
+    template = teamTemplate["Max"];
+  } else if (exercise === "Squat") {
+    template = teamTemplate["Percentage"];
+  } else {
+    template = teamTemplate[`Box${selectionValue}`];
+  }
 
-    if (!template || !Array.isArray(template)) return [];
+  if (!template || !Array.isArray(template)) return [];
 
-    const resultSets = calculateSets(template, baseWeight);
+  return calculateSets(template, baseWeight) || [];
 
-    return Array.isArray(resultSets) ? resultSets : [];
-
-  }, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
-
+}, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate, maxLoaded]);
   /* ================= SAVE WORKOUT ================= */
 
   const saveWorkout = async () => {
