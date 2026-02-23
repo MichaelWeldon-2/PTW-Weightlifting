@@ -47,7 +47,7 @@ export default function CoachDashboard({ profile }) {
 
   }, [workouts, timeFilter]);
 
-  /* ================= ANALYTICS ENGINE ================= */
+  /* ================= INTELLIGENCE ENGINE ================= */
 
   const analytics = useMemo(() => {
 
@@ -57,7 +57,10 @@ export default function CoachDashboard({ profile }) {
         totalVolume: 0,
         improving: 0,
         declining: 0,
+        alerts: 0,
+        riskIndex: [],
         athleteOfPeriod: null,
+        insights: [],
         teamRecommendations: []
       };
     }
@@ -72,16 +75,43 @@ export default function CoachDashboard({ profile }) {
 
     const athleteMap = {};
     const progressMap = {};
+    const streakMap = {};
+    const insights = [];
 
     sorted.forEach(w => {
 
-      if (!w.weight) return;
-
-      const weight = Number(w.weight);
+      const weight = Number(w.weight || 0);
 
       totalAttempts++;
       totalVolume += weight;
       if (w.result === "Pass") totalPass++;
+
+      /* ===== STREAK TRACKING ===== */
+
+      const streakKey = `${w.athleteId}-${w.exercise}-${w.weight}`;
+
+      if (!streakMap[streakKey]) streakMap[streakKey] = 0;
+
+      if (w.result === "Fail") {
+        streakMap[streakKey]++;
+      } else {
+        streakMap[streakKey] = 0;
+      }
+
+      /* ===== PROGRESS TRACKING ===== */
+
+      const progressKey = `${w.athleteId}-${w.exercise}`;
+
+      if (!progressMap[progressKey]) {
+        progressMap[progressKey] = {
+          athleteName: w.athleteName,
+          weights: []
+        };
+      }
+
+      progressMap[progressKey].weights.push(weight);
+
+      /* ===== ATHLETE AGGREGATE ===== */
 
       if (!athleteMap[w.athleteId]) {
         athleteMap[w.athleteId] = {
@@ -96,12 +126,6 @@ export default function CoachDashboard({ profile }) {
       athleteMap[w.athleteId].attempts++;
       if (w.result === "Fail") athleteMap[w.athleteId].fails++;
 
-      if (!progressMap[w.athleteId]) {
-        progressMap[w.athleteId] = [];
-      }
-
-      progressMap[w.athleteId].push(weight);
-
     });
 
     const passRate =
@@ -109,25 +133,58 @@ export default function CoachDashboard({ profile }) {
         ? Math.round((totalPass / totalAttempts) * 100)
         : 0;
 
+    /* ===== IMPROVEMENT ===== */
+
     let improving = 0;
     let declining = 0;
 
-    Object.values(progressMap).forEach(weights => {
-      if (weights.length >= 2) {
-        if (weights[weights.length - 1] > weights[0]) improving++;
-        if (weights[weights.length - 1] < weights[0]) declining++;
+    Object.values(progressMap).forEach(p => {
+      if (p.weights.length >= 2) {
+        if (p.weights[p.weights.length - 1] > p.weights[0]) improving++;
+        if (p.weights[p.weights.length - 1] < p.weights[0]) declining++;
       }
     });
+
+    /* ===== ALERTS ===== */
+
+    const alerts =
+      Object.values(streakMap)
+        .filter(v => v >= 3).length;
+
+    /* ===== RISK INDEX ===== */
+
+    const riskIndex =
+      Object.values(athleteMap)
+        .map(a => {
+
+          const failRate =
+            a.attempts > 0 ? a.fails / a.attempts : 0;
+
+          let status = "Stable";
+
+          if (failRate >= 0.5) status = "Critical";
+          else if (failRate >= 0.3) status = "Warning";
+
+          return {
+            name: a.name,
+            status
+          };
+
+        });
+
+    /* ===== ATHLETE OF PERIOD ===== */
 
     const athleteOfPeriod =
       Object.values(athleteMap)
         .sort((a,b)=>b.volume - a.volume)[0] || null;
 
+    /* ===== TEAM RECOMMENDATIONS ===== */
+
     const teamRecommendations = [];
 
     if (passRate < 65) {
       teamRecommendations.push(
-        "Team intensity likely too high — adjust program"
+        "Team intensity too high — reduce load"
       );
     }
 
@@ -137,12 +194,33 @@ export default function CoachDashboard({ profile }) {
       );
     }
 
+    /* ===== PLATEAU DETECTION ===== */
+
+    Object.values(progressMap).forEach(p => {
+
+      if (p.weights.length >= 6) {
+
+        const last6 = p.weights.slice(-6);
+
+        if (Math.max(...last6) - Math.min(...last6) <= 5) {
+          insights.push({
+            message: `${p.athleteName} plateauing`
+          });
+        }
+
+      }
+
+    });
+
     return {
       passRate,
       totalVolume,
       improving,
       declining,
+      alerts,
+      riskIndex,
       athleteOfPeriod,
+      insights,
       teamRecommendations
     };
 
@@ -155,50 +233,26 @@ export default function CoachDashboard({ profile }) {
 
       <h2>🧠 Coach Intelligence Dashboard</h2>
 
-      <div style={{ marginBottom: 20 }}>
-        <select
-          value={timeFilter}
-          onChange={e => setTimeFilter(Number(e.target.value))}
-        >
-          <option value={7}>Last 7 Days</option>
-          <option value={30}>Last 30 Days</option>
-          <option value={90}>Last 90 Days</option>
-        </select>
-      </div>
+      <select
+        value={timeFilter}
+        onChange={e => setTimeFilter(Number(e.target.value))}
+      >
+        <option value={7}>Last 7 Days</option>
+        <option value={30}>Last 30 Days</option>
+        <option value={90}>Last 90 Days</option>
+      </select>
 
       <div className="dashboard-grid">
         <Metric label="Pass Rate" value={`${analytics.passRate}%`} />
         <Metric label="Total Volume" value={`${analytics.totalVolume.toLocaleString()} lbs`} />
         <Metric label="Improving" value={analytics.improving} />
         <Metric label="Declining" value={analytics.declining} />
+        <Metric label="Alerts" value={analytics.alerts} />
       </div>
-
-      <hr />
-
-      <h3>🏆 Athlete of Period</h3>
-      <p>
-        {analytics.athleteOfPeriod?.name || "N/A"}
-      </p>
-
-      <hr />
-
-      <h3>🧭 Team Programming Direction</h3>
-
-      {analytics.teamRecommendations.length === 0 && (
-        <p>No changes recommended</p>
-      )}
-
-      {analytics.teamRecommendations.map((r, i) => (
-        <div key={i} className="recommendation-box">
-          {r}
-        </div>
-      ))}
 
     </div>
   );
 }
-
-/* ================= METRIC COMPONENT ================= */
 
 function Metric({ label, value }) {
   return (

@@ -99,15 +99,18 @@ input, select {
   display: flex;
   min-height: 100dvh;
   width: 100%;
-  justify-content: center;
+  justify-content: center; /* CENTER HORIZONTALLY */
 }
 
 .content {
   flex: 1;
-  width: 100%;
-  max-width: 1100px;
   padding: 30px;
-  margin: 0 auto; /* center content */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+
+  max-width: 1200px; /* hard max width */
+  width: 100%;
+  margin: 0 auto; /* center */
 }
 
 /* ============================= */
@@ -280,8 +283,8 @@ input, select {
 
   .content {
     padding: 20px 16px 100px 16px;
-    max-width: 600px;
-    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
   }
 
   .hero-header {
