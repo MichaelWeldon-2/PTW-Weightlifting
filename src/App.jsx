@@ -31,7 +31,10 @@ import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
 import PreSeasonMaxEntry from "./pages/PreSeasonMaxEntry";
 import Account from "./components/Account";
-
+import { useEffect, useState } from "react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
+import AnnualPlanner from "./pages/AnnualPlanner";
 import "./App.css";
 
 /* ================= NAV COMPONENTS ================= */
@@ -261,7 +264,11 @@ export default function App() {
             <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
           </>
         )}
-
+<SidebarItem
+  label="Annual Planner"
+  active={activeTab==="planner"}
+  onClick={()=>setActiveTab("planner")}
+/>
         <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
       </div>
 
@@ -285,7 +292,9 @@ export default function App() {
             {activeTab === "preseason" && profile.role==="coach" && <PreSeasonMaxEntry team={activeTeam} />}
             {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
             {activeTab === "account" && <Account profile={profile} />}
-
+{activeTab === "planner" && profile.role==="coach" && (
+  <AnnualPlanner team={activeTeam} />
+)}
           </motion.div>
         </AnimatePresence>
       </div>
