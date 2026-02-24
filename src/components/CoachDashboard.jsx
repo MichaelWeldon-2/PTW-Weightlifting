@@ -5,7 +5,7 @@ import { db } from "../firebase";
 export default function CoachDashboard({ team }) {
 
   const [workouts, setWorkouts] = useState([]);
-  const [timeFilter, setTimeFilter] = useState(30);
+  const [timeFilter, setTimeFilter] = useState(365);
 
   /* ================= LOAD TEAM WORKOUTS ================= */
 
