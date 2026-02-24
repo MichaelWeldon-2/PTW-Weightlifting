@@ -32,7 +32,6 @@ import CreateTeam from "./pages/CreateTeam";
 import PreSeasonMaxEntry from "./pages/PreSeasonMaxEntry";
 import Account from "./components/Account";
 import { useEffect, useState } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
 import AnnualPlanner from "./pages/AnnualPlanner";
 import "./App.css";
 
