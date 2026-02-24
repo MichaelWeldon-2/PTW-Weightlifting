@@ -120,31 +120,52 @@ export default function AthleteProgress({ profile, team }) {
 
   /* ================= LOAD HISTORICAL SNAPSHOTS ================= */
 
-  useEffect(() => {
+ /* ================= LOAD HISTORICAL SNAPSHOTS ================= */
 
-    if (!team?.id || !selectedAthlete) {
-      setHistoricalMaxes([]);
-      return;
-    }
+useEffect(() => {
 
-    const loadHistory = async () => {
+  if (!team?.id || !selectedAthlete) {
+    setHistoricalMaxes([]);
+    return;
+  }
+
+  const loadHistory = async () => {
+
+    try {
+
+      const ref = collection(db, "seasonMaxes", team.id, "athletes");
 
       const q = query(
-        collection(db, "seasonMaxes", team.id, "athletes"),
+        ref,
         where("athleteId", "==", selectedAthlete)
       );
 
       const snap = await getDocs(q);
 
-      const data = snap.docs.map(d => d.data());
+      if (snap.empty) {
+        console.log("No historical snapshots found.");
+        setHistoricalMaxes([]);
+        return;
+      }
+
+      const data = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+
+      console.log("Historical data loaded:", data);
 
       setHistoricalMaxes(data);
-    };
 
-    loadHistory();
+    } catch (err) {
+      console.error("Historical load error:", err);
+      setHistoricalMaxes([]);
+    }
+  };
 
-  }, [team?.id, selectedAthlete]);
+  loadHistory();
 
+}, [team?.id, selectedAthlete]);
   /* ================= CURRENT TOTAL ================= */
 
   const currentTotal = useMemo(() => {
