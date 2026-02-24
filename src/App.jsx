@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -30,11 +31,10 @@ import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
 import PreSeasonMaxEntry from "./pages/PreSeasonMaxEntry";
-import Account from "./components/Account";
-import { useEffect, useState } from "react";
 import AnnualPlanner from "./pages/AnnualPlanner";
-import "./App.css";
+import Account from "./components/Account";
 
+import "./App.css";
 /* ================= NAV COMPONENTS ================= */
 
 function NavItem({ icon, label, active, onClick }) {
