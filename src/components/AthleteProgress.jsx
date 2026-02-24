@@ -16,7 +16,8 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  CartesianGrid
+  CartesianGrid,
+  Dot
 } from "recharts";
 
 const seasonOrder = {
@@ -30,17 +31,13 @@ export default function AthleteProgress({ profile, team }) {
 
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("");
-  const [workouts, setWorkouts] = useState([]);
   const [liveMaxes, setLiveMaxes] = useState(null);
   const [historicalMaxes, setHistoricalMaxes] = useState([]);
 
   /* ================= LOAD TEAM ATHLETES ================= */
 
   useEffect(() => {
-    if (!team?.members?.length) {
-      setAthletes([]);
-      return;
-    }
+    if (!team?.members?.length) return;
 
     const q = query(
       collection(db, "users"),
@@ -66,73 +63,28 @@ export default function AthleteProgress({ profile, team }) {
     }
   }, [profile]);
 
-  /* ================= LOAD WORKOUTS ================= */
-
-  useEffect(() => {
-
-    if (!selectedAthlete) {
-      setWorkouts([]);
-      return;
-    }
-
-    const q = query(
-      collection(db, "workouts"),
-      where("athleteId", "==", selectedAthlete)
-    );
-
-    const unsub = onSnapshot(q, snap => {
-      setWorkouts(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
-    });
-
-    return () => unsub();
-
-  }, [selectedAthlete]);
-
   /* ================= LOAD LIVE MAXES ================= */
 
   useEffect(() => {
-
-    if (!selectedAthlete) {
-      setLiveMaxes(null);
-      return;
-    }
+    if (!selectedAthlete) return;
 
     const loadLive = async () => {
       const snap = await getDoc(
         doc(db, "seasonMaxesCurrent", selectedAthlete)
       );
 
-      if (snap.exists()) {
-        setLiveMaxes(snap.data());
-      } else {
-        setLiveMaxes(null);
-      }
+      setLiveMaxes(snap.exists() ? snap.data() : null);
     };
 
     loadLive();
-
   }, [selectedAthlete]);
 
   /* ================= LOAD HISTORICAL SNAPSHOTS ================= */
 
- /* ================= LOAD HISTORICAL SNAPSHOTS ================= */
+  useEffect(() => {
+    if (!team?.id || !selectedAthlete) return;
 
-useEffect(() => {
-
-  if (!team?.id || !selectedAthlete) {
-    setHistoricalMaxes([]);
-    return;
-  }
-
-  const loadHistory = async () => {
-
-    try {
-
+    const loadHistory = async () => {
       const ref = collection(db, "seasonMaxes", team.id, "athletes");
 
       const q = query(
@@ -143,7 +95,6 @@ useEffect(() => {
       const snap = await getDocs(q);
 
       if (snap.empty) {
-        console.log("No historical snapshots found.");
         setHistoricalMaxes([]);
         return;
       }
@@ -153,55 +104,40 @@ useEffect(() => {
         ...d.data()
       }));
 
-      console.log("Historical data loaded:", data);
-
       setHistoricalMaxes(data);
+    };
 
-    } catch (err) {
-      console.error("Historical load error:", err);
-      setHistoricalMaxes([]);
-    }
-  };
+    loadHistory();
+  }, [team?.id, selectedAthlete]);
 
-  loadHistory();
-
-}, [team?.id, selectedAthlete]);
   /* ================= CURRENT TOTAL ================= */
 
   const currentTotal = useMemo(() => {
-
     if (!liveMaxes) return 0;
-
     return (
       (liveMaxes.benchMax || 0) +
       (liveMaxes.squatMax || 0) +
       (liveMaxes.powerCleanMax || 0)
     );
-
   }, [liveMaxes]);
 
-  /* ================= SORTED HISTORICAL DATA ================= */
+  /* ================= SORTED HISTORY ================= */
 
   const sortedHistory = useMemo(() => {
-
     if (!historicalMaxes.length) return [];
 
-    return [...historicalMaxes]
-      .sort((a, b) => {
-        if (a.year !== b.year) return a.year - b.year;
-        return seasonOrder[a.season] - seasonOrder[b.season];
-      });
-
+    return [...historicalMaxes].sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return seasonOrder[a.season] - seasonOrder[b.season];
+    });
   }, [historicalMaxes]);
 
-  /* ================= % CHANGE FROM LAST SEASON ================= */
+  /* ================= % CHANGE ================= */
 
   const percentChange = useMemo(() => {
-
     if (sortedHistory.length < 1) return null;
 
     const lastSeason = sortedHistory[sortedHistory.length - 1];
-
     const previousTotal = lastSeason.total || 0;
 
     if (!previousTotal) return null;
@@ -209,21 +145,59 @@ useEffect(() => {
     return Math.round(
       ((currentTotal - previousTotal) / previousTotal) * 100
     );
-
   }, [sortedHistory, currentTotal]);
 
-  /* ================= CHART DATA ================= */
+  /* ================= BIGGEST OFFSEASON GAIN ================= */
+
+  const biggestGain = useMemo(() => {
+    if (sortedHistory.length < 2) return null;
+
+    let maxGain = 0;
+    let bestPeriod = null;
+
+    for (let i = 1; i < sortedHistory.length; i++) {
+      const gain =
+        (sortedHistory[i].total || 0) -
+        (sortedHistory[i - 1].total || 0);
+
+      if (gain > maxGain) {
+        maxGain = gain;
+        bestPeriod = `${sortedHistory[i - 1].season} ${sortedHistory[i - 1].year}
+          → ${sortedHistory[i].season} ${sortedHistory[i].year}`;
+      }
+    }
+
+    return maxGain > 0 ? { maxGain, bestPeriod } : null;
+  }, [sortedHistory]);
+
+  /* ================= PR DETECTION ================= */
+
+  const historyWithPR = useMemo(() => {
+    let maxSoFar = 0;
+
+    return sortedHistory.map(d => {
+      if ((d.total || 0) > maxSoFar) {
+        maxSoFar = d.total;
+        return { ...d, isPR: true };
+      }
+      return { ...d, isPR: false };
+    });
+  }, [sortedHistory]);
 
   const chartData = useMemo(() => {
-
-    if (!sortedHistory.length) return [];
-
-    return sortedHistory.map(d => ({
+    return historyWithPR.map(d => ({
       label: `${d.season} ${d.year}`,
-      total: d.total || 0
+      total: d.total || 0,
+      isPR: d.isPR
     }));
+  }, [historyWithPR]);
 
-  }, [sortedHistory]);
+  const careerBest =
+    historyWithPR.length > 0
+      ? historyWithPR.reduce((max, curr) =>
+          curr.total > max.total ? curr : max
+        )
+      : null;
 
   /* ================= UI ================= */
 
@@ -248,21 +222,17 @@ useEffect(() => {
 
       <hr />
 
-      {/* ================= LIVE MAXES ================= */}
-
+      {/* LIVE MAXES */}
       {liveMaxes && (
         <div className="dashboard-grid">
-
           <Metric label="Bench" value={`${liveMaxes.benchMax || 0} lbs`} />
           <Metric label="Squat" value={`${liveMaxes.squatMax || 0} lbs`} />
           <Metric label="Power Clean" value={`${liveMaxes.powerCleanMax || 0} lbs`} />
           <Metric label="TOTAL" value={`${currentTotal} lbs`} />
-
         </div>
       )}
 
-      {/* ================= % CHANGE ================= */}
-
+      {/* % CHANGE */}
       {percentChange !== null && (
         <div style={{ marginTop: 20 }}>
           <strong>
@@ -274,10 +244,19 @@ useEffect(() => {
         </div>
       )}
 
+      {/* BIGGEST GAIN */}
+      {biggestGain && (
+        <div style={{ marginTop: 10 }}>
+          🏆 Biggest Offseason Gain: +{biggestGain.maxGain} lbs  
+          <div style={{ fontSize: 12 }}>
+            {biggestGain.bestPeriod}
+          </div>
+        </div>
+      )}
+
       <hr />
 
-      {/* ================= HISTORICAL CHART ================= */}
-
+      {/* HISTORICAL CHART */}
       {chartData.length === 0 && (
         <div>No historical season data yet.</div>
       )}
@@ -294,9 +273,32 @@ useEffect(() => {
               dataKey="total"
               stroke="#0e28b1"
               strokeWidth={3}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                if (payload.isPR) {
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={6}
+                      fill="gold"
+                      stroke="black"
+                      strokeWidth={2}
+                    />
+                  );
+                }
+                return <Dot {...props} />;
+              }}
             />
           </LineChart>
         </ResponsiveContainer>
+      )}
+
+      {careerBest && (
+        <div style={{ marginTop: 15 }}>
+          👑 Career Best Season: {careerBest.season} {careerBest.year}  
+          ({careerBest.total} lbs)
+        </div>
       )}
 
     </div>
