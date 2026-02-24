@@ -12,7 +12,7 @@ function Dashboard({ profile, team }) {
   const [currentBlock, setCurrentBlock] = useState(null);
   const [competitionCountdown, setCompetitionCountdown] = useState(null);
   const [successFlash, setSuccessFlash] = useState(false);
-
+  const [currentPhase, setCurrentPhase] = useState(null);
   const isCoach = profile?.role === "coach";
 
   /* ================= LOAD TEAM WORKOUTS ================= */
@@ -39,7 +39,55 @@ function Dashboard({ profile, team }) {
 
     return () => unsub();
   }, [team?.id]);
+useEffect(() => {
+  if (!team?.id) return;
 
+  const phaseRef = doc(db, "annualPlans", team.id);
+
+  getDoc(phaseRef).then(snap => {
+
+    if (!snap.exists()) {
+      setCurrentPhase(null);
+      return;
+    }
+
+    const data = snap.data();
+    const today = new Date();
+
+    const phase = data.phases?.find(p => {
+      const start = new Date(p.startDate);
+      const end = new Date(p.endDate);
+      return today >= start && today <= end;
+    });
+
+    if (!phase) {
+      setCurrentPhase(null);
+      return;
+    }
+
+    const start = new Date(phase.startDate);
+    const diffDays = Math.floor(
+      (today - start) / (1000 * 60 * 60 * 24)
+    );
+
+    const week = Math.floor(diffDays / 7) + 1;
+
+    const totalWeeks =
+      phase.totalWeeks ||
+      Math.ceil(
+        (new Date(phase.endDate) - start) /
+        (1000 * 60 * 60 * 24 * 7)
+      );
+
+    setCurrentPhase({
+      name: phase.name,
+      week,
+      totalWeeks
+    });
+
+  });
+
+}, [team?.id]);
   /* ================= TEAM FATIGUE ================= */
 
   const teamFatigue = useMemo(() => {
@@ -189,7 +237,9 @@ function Dashboard({ profile, team }) {
         <div className="hero-overlay">
           <h1>{team?.name || "Team Dashboard"}</h1>
           <p>
-            {team?.currentSeason || ""} • {currentBlock?.name || ""} • Week {team?.currentWeek || 0}
+            {currentPhase
+  ? `${currentPhase.name} • Week ${currentPhase.week}/${currentPhase.totalWeeks}`
+  : ""}
           </p>
         </div>
       </div>

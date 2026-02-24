@@ -263,26 +263,51 @@ export default function Workouts({ profile, team }) {
         createdAt: serverTimestamp()
       });
 
-      if (selectionValue === "Max" && result === "Pass") {
+     if (selectionValue === "Max" && result === "Pass") {
 
-        const fieldMap = {
-          Bench: "benchMax",
-          Squat: "squatMax",
-          PowerClean: "powerCleanMax"
-        };
+  const fieldMap = {
+    Bench: "benchMax",
+    Squat: "squatMax",
+    PowerClean: "powerCleanMax"
+  };
 
-        await setDoc(
-          doc(db, "seasonMaxes", athleteId),
-          {
-            athleteId,
-            athleteName,
-            [fieldMap[exercise]]: Number(selectedWeight),
-            updatedAt: serverTimestamp()
-          },
-          { merge: true }
-        );
-      }
+  const fieldName = fieldMap[exercise];
 
+  const maxRef = doc(db, "seasonMaxesCurrent", athleteId);
+  const snap = await getDoc(maxRef);
+
+  let existing = {
+    benchMax: 0,
+    squatMax: 0,
+    powerCleanMax: 0
+  };
+
+  if (snap.exists()) {
+    existing = snap.data();
+  }
+
+  const updated = {
+    ...existing,
+    [fieldName]: Number(selectedWeight)
+  };
+
+  const total =
+    (updated.benchMax || 0) +
+    (updated.squatMax || 0) +
+    (updated.powerCleanMax || 0);
+
+  await setDoc(
+    maxRef,
+    {
+      athleteId,
+      athleteName,
+      ...updated,
+      total,
+      updatedAt: serverTimestamp()
+    },
+    { merge: true }
+  );
+}
       setSuccessFlash(true);
       setTimeout(() => setSuccessFlash(false), 1000);
       setOverrideReason("");
