@@ -35,14 +35,14 @@ export default function Workouts({ profile, team }) {
 
   const isCoach = profile?.role === "coach";
 
-  /* ================= STEP 1 — DEBUG LOG ================= */
+  /* ================= DEBUG ================= */
 
   useEffect(() => {
-    console.log("DEBUG TEMPLATE:", teamTemplate);
-    console.log("DEBUG MAXES:", maxes);
+    console.log("TEMPLATE:", teamTemplate);
+    console.log("MAXES:", maxes);
   }, [teamTemplate, maxes]);
 
-  /* ================= STEP 2 — GUARANTEED SAFE TEMPLATE ================= */
+  /* ================= SAFE TEMPLATE LOAD ================= */
 
   useEffect(() => {
     if (!team?.id) return;
@@ -61,7 +61,6 @@ export default function Workouts({ profile, team }) {
         } else {
           setTeamTemplate(defaultTemplate);
         }
-
       } catch (err) {
         console.error("Template load error:", err);
         setTeamTemplate(defaultTemplate);
@@ -132,7 +131,7 @@ export default function Workouts({ profile, team }) {
     }[exercise] || 0;
   }, [maxes, exercise]);
 
-  /* ================= STEP 3 — FINAL SAFETY LAYER ================= */
+  /* ================= CALCULATE SETS ================= */
 
   const calculatedSets = useMemo(() => {
 
@@ -156,11 +155,9 @@ export default function Workouts({ profile, team }) {
 
     if (!template || !Array.isArray(template)) return [];
 
-    const resultSets = calculateSets(template, baseWeight);
+    const sets = calculateSets(template, baseWeight);
 
-    if (!Array.isArray(resultSets)) return [];
-
-    return resultSets;
+    return Array.isArray(sets) ? sets : [];
 
   }, [
     exercise,
@@ -170,6 +167,61 @@ export default function Workouts({ profile, team }) {
     teamTemplate,
     maxLoaded
   ]);
+
+  /* ================= DROPDOWN UI ================= */
+
+  const weightOptions = Array.from({ length: 59 }, (_, i) => 135 + i * 5);
+
+  const renderDynamicDropdown = () => {
+
+    if (exercise === "Squat") {
+      return (
+        <>
+          <select
+            value={selectionValue}
+            onChange={e => setSelectionValue(e.target.value)}
+          >
+            {Array.from({ length: 14 }, (_, i) => 25 + i * 5).map(p => (
+              <option key={p} value={p}>{p}%</option>
+            ))}
+            <option value="Max">Max</option>
+          </select>
+
+          <select
+            value={selectedWeight}
+            onChange={e => setSelectedWeight(Number(e.target.value))}
+          >
+            {weightOptions.map(w => (
+              <option key={w} value={w}>{w} lbs</option>
+            ))}
+          </select>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <select
+          value={selectionValue}
+          onChange={e => setSelectionValue(e.target.value)}
+        >
+          {[1,2,3,4,5,6].map(b => (
+            <option key={b} value={b}>Box {b}</option>
+          ))}
+          <option value="Max">Max</option>
+        </select>
+
+        <select
+          value={selectedWeight}
+          onChange={e => setSelectedWeight(Number(e.target.value))}
+        >
+          {weightOptions.map(w => (
+            <option key={w} value={w}>{w} lbs</option>
+          ))}
+        </select>
+      </>
+    );
+  };
 
   /* ================= SAVE WORKOUT ================= */
 
@@ -181,7 +233,6 @@ export default function Workouts({ profile, team }) {
     }
 
     const athleteId = isCoach ? selectedAthlete : profile?.uid;
-
     if (!athleteId) {
       alert("Select athlete");
       return;
@@ -276,7 +327,8 @@ export default function Workouts({ profile, team }) {
           <option>PowerClean</option>
         </select>
 
-        {/* Preview Sets */}
+        {renderDynamicDropdown()}
+
         <div style={{ marginTop: 15 }}>
           {calculatedSets.map((set, index) => (
             <div key={index}>
