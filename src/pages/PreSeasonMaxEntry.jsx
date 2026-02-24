@@ -2,8 +2,6 @@ import { useEffect, useState, useMemo } from "react";
 import {
   collection,
   doc,
-  getDocs,
-  getDoc,
   setDoc,
   deleteDoc,
   query,
@@ -17,14 +15,25 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("");
+
   const [benchMax, setBenchMax] = useState("");
   const [squatMax, setSquatMax] = useState("");
   const [powerCleanMax, setPowerCleanMax] = useState("");
+
   const [season, setSeason] = useState("Fall");
   const [year, setYear] = useState(new Date().getFullYear());
+
   const [history, setHistory] = useState([]);
 
   const isCoach = profile?.role === "coach";
+
+  /* ================= AUTO SELECT SELF ================= */
+
+  useEffect(() => {
+    if (profile?.role === "athlete") {
+      setSelectedAthlete(profile.uid);
+    }
+  }, [profile]);
 
   /* ================= LOAD ATHLETES ================= */
 
@@ -58,10 +67,18 @@ export default function HistoricalMaxEntry({ team, profile }) {
     const ref = collection(db, "seasonMaxHistory", team.id, "athletes");
 
     const unsub = onSnapshot(ref, snap => {
+
       const docs = snap.docs.map(d => ({
         id: d.id,
         ...d.data()
       }));
+
+      // Sort newest first
+      docs.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return a.season.localeCompare(b.season);
+      });
+
       setHistory(docs);
     });
 
@@ -69,26 +86,42 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   }, [team?.id]);
 
-  /* ================= FILTERED HISTORY ================= */
+  /* ================= TOTAL PREVIEW ================= */
+
+  const totalPreview = useMemo(() => {
+    return (
+      (Number(benchMax) || 0) +
+      (Number(squatMax) || 0) +
+      (Number(powerCleanMax) || 0)
+    );
+  }, [benchMax, squatMax, powerCleanMax]);
+
+  /* ================= FILTER HISTORY ================= */
 
   const filteredHistory = useMemo(() => {
 
     return history.filter(h => {
 
-      if (!isCoach && h.athleteId !== profile.uid) return false;
+      if (!isCoach && h.athleteId !== profile.uid)
+        return false;
 
-      if (selectedAthlete && h.athleteId !== selectedAthlete) return false;
-      if (season && h.season !== season) return false;
-      if (year && Number(h.year) !== Number(year)) return false;
+      if (isCoach && selectedAthlete && h.athleteId !== selectedAthlete)
+        return false;
 
       return true;
+
     });
 
-  }, [history, selectedAthlete, season, year, profile, isCoach]);
+  }, [history, selectedAthlete, profile, isCoach]);
 
   /* ================= SAVE SNAPSHOT ================= */
 
   const handleSave = async () => {
+
+    if (!team?.id) {
+      alert("Team not loaded");
+      return;
+    }
 
     const athleteId = isCoach ? selectedAthlete : profile.uid;
 
@@ -101,10 +134,7 @@ export default function HistoricalMaxEntry({ team, profile }) {
       athletes.find(a => a.id === athleteId)?.displayName ||
       profile.displayName;
 
-    const total =
-      (Number(benchMax) || 0) +
-      (Number(squatMax) || 0) +
-      (Number(powerCleanMax) || 0);
+    const total = totalPreview;
 
     const snapshotId =
       `${athleteId}_${season}_${year}_${Date.now()}`;
@@ -132,8 +162,10 @@ export default function HistoricalMaxEntry({ team, profile }) {
   /* ================= DELETE SNAPSHOT ================= */
 
   const handleDelete = async (id) => {
-    if (!isCoach) return;
-    await deleteDoc(doc(db, "seasonMaxHistory", team.id, "athletes", id));
+    if (!isCoach || !team?.id) return;
+    await deleteDoc(
+      doc(db, "seasonMaxHistory", team.id, "athletes", id)
+    );
   };
 
   /* ================= UI ================= */
@@ -161,45 +193,60 @@ export default function HistoricalMaxEntry({ team, profile }) {
           </select>
         )}
 
+        <select
+          value={season}
+          onChange={e => setSeason(e.target.value)}
+        >
+          <option>Summer</option>
+          <option>Fall</option>
+          <option>Winter</option>
+          <option>Spring</option>
+        </select>
+
         <input
+          type="number"
+          placeholder="Year"
+          value={year}
+          onChange={e => setYear(e.target.value)}
+        />
+
+        <input
+          type="number"
           placeholder="Bench Max"
           value={benchMax}
           onChange={e => setBenchMax(e.target.value)}
         />
 
         <input
+          type="number"
           placeholder="Squat Max"
           value={squatMax}
           onChange={e => setSquatMax(e.target.value)}
         />
 
         <input
+          type="number"
           placeholder="Power Clean Max"
           value={powerCleanMax}
           onChange={e => setPowerCleanMax(e.target.value)}
         />
 
-        <input
-          placeholder="Season"
-          value={season}
-          onChange={e => setSeason(e.target.value)}
-        />
-
-        <input
-          placeholder="Year"
-          value={year}
-          onChange={e => setYear(e.target.value)}
-        />
-
       </div>
 
-      <button onClick={handleSave} style={{ marginTop: 15 }}>
+      <div style={{ marginTop: 12, fontWeight: 600 }}>
+        Total: {totalPreview} lbs
+      </div>
+
+      <button
+        onClick={handleSave}
+        style={{ marginTop: 15 }}
+      >
         Save Snapshot
       </button>
 
       <hr style={{ margin: "30px 0" }} />
 
-      {/* HISTORY CARDS */}
+      {/* HISTORY */}
 
       <h3>📊 Historical Records</h3>
 
@@ -218,14 +265,13 @@ export default function HistoricalMaxEntry({ team, profile }) {
             <div style={{ marginTop: 10 }}>
               Bench: {h.benchMax} lbs
             </div>
-            <div>
-              Squat: {h.squatMax} lbs
-            </div>
-            <div>
-              Clean: {h.powerCleanMax} lbs
-            </div>
+            <div>Squat: {h.squatMax} lbs</div>
+            <div>Clean: {h.powerCleanMax} lbs</div>
 
-            <div className="metric-value" style={{ marginTop: 10 }}>
+            <div
+              className="metric-value"
+              style={{ marginTop: 10 }}
+            >
               Total: {h.total} lbs
             </div>
 

@@ -35,6 +35,7 @@ import AnnualPlanner from "./pages/AnnualPlanner";
 import Account from "./components/Account";
 
 import "./App.css";
+
 /* ================= NAV COMPONENTS ================= */
 
 function NavItem({ icon, label, active, onClick }) {
@@ -100,58 +101,6 @@ export default function App() {
     }
   };
 
-  /* ================= AUTO SNAPSHOT WHEN SEASON CHANGES ================= */
-
-  const autoSeasonSnapshot = async (team) => {
-
-    if (!team?.id || !team?.currentSeason || !team?.currentYear) return;
-
-    const athletesQuery = query(
-      collection(db, "users"),
-      where("teamId", "==", team.id),
-      where("role", "==", "athlete")
-    );
-
-    const athletesSnap = await getDocs(athletesQuery);
-
-    for (const docSnap of athletesSnap.docs) {
-
-      const athlete = docSnap.data();
-      const athleteId = docSnap.id;
-
-      const currentMaxSnap = await getDoc(
-        doc(db, "seasonMaxesCurrent", athleteId)
-      );
-
-      if (!currentMaxSnap.exists()) continue;
-
-      const currentMax = currentMaxSnap.data();
-
-      const total =
-        (currentMax.benchMax || 0) +
-        (currentMax.squatMax || 0) +
-        (currentMax.powerCleanMax || 0);
-
-      const snapshotId =
-        `${athleteId}_${team.currentSeason}_${team.currentYear}`;
-
-      await setDoc(
-        doc(db, "seasonMaxes", team.id, "athletes", snapshotId),
-        {
-          athleteId,
-          athleteName: athlete.displayName,
-          season: team.currentSeason,
-          year: team.currentYear,
-          benchMax: currentMax.benchMax || 0,
-          squatMax: currentMax.squatMax || 0,
-          powerCleanMax: currentMax.powerCleanMax || 0,
-          total,
-          createdAt: serverTimestamp()
-        }
-      );
-    }
-  };
-
   /* ================= AUTH LISTENER ================= */
 
   useEffect(() => {
@@ -191,51 +140,210 @@ export default function App() {
 
   }, []);
 
-  /* ================= WATCH FOR SEASON CHANGE ================= */
-
-  useEffect(() => {
-    if (!activeTeam) return;
-
-    autoSeasonSnapshot(activeTeam);
-
-  }, [activeTeam?.currentSeason, activeTeam?.currentYear]);
-
   /* ================= AUTH SCREEN ================= */
 
-  if (!user) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <div className="auth-title">PTW Weightlifting</div>
+if (!user) {
+  return (
+    <div className="auth-container">
+      <div className="auth-card">
 
-          <input
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="Email"
-          />
+        <div className="auth-title">PTW Weightlifting</div>
 
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Password"
-          />
+        <input
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="Email"
+        />
 
-          <button
-            onClick={async () => {
-              try {
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Password"
+        />
+
+        {isRegistering && (
+          <>
+            <input
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              placeholder="Full Name (Must Match Roster)"
+            />
+
+            <div style={{ marginBottom: 12 }}>
+              <label>
+                <input
+                  type="radio"
+                  value="coach"
+                  checked={roleChoice === "coach"}
+                  onChange={() => setRoleChoice("coach")}
+                />
+                Coach
+              </label>
+
+              <label style={{ marginLeft: 20 }}>
+                <input
+                  type="radio"
+                  value="athlete"
+                  checked={roleChoice === "athlete"}
+                  onChange={() => setRoleChoice("athlete")}
+                />
+                Athlete
+              </label>
+            </div>
+
+            {roleChoice === "athlete" && (
+              <input
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value)}
+                placeholder="Team Invite Code"
+              />
+            )}
+          </>
+        )}
+
+        <button
+          onClick={async () => {
+            try {
+
+              if (isRegistering) {
+
+                if (!email || !password) {
+                  alert("Enter email and password.");
+                  return;
+                }
+
+                if (!displayName.trim()) {
+                  alert("Enter full name.");
+                  return;
+                }
+
+                let teamId = null;
+                let athleteRosterId = null;
+
+                /* ================= ATHLETE REGISTRATION ================= */
+
+                if (roleChoice === "athlete") {
+
+                  if (!inviteCode.trim()) {
+                    alert("Invite code required.");
+                    return;
+                  }
+
+                  const teamQuery = query(
+                    collection(db, "teams"),
+                    where("inviteCode", "==", inviteCode.trim().toUpperCase())
+                  );
+
+                  const teamSnap = await getDocs(teamQuery);
+
+                  if (teamSnap.empty) {
+                    alert("Invalid invite code.");
+                    return;
+                  }
+
+                  teamId = teamSnap.docs[0].id;
+
+                  const rosterRef = collection(db, "athletes", teamId, "roster");
+                  const rosterSnap = await getDocs(rosterRef);
+
+                  const normalizedName = displayName
+                    .toLowerCase()
+                    .trim();
+
+                  const match = rosterSnap.docs.find(d =>
+                    d.data().displayName?.toLowerCase().trim() === normalizedName
+                  );
+
+                  if (!match) {
+                    alert("No roster record found. Contact your coach.");
+                    return;
+                  }
+
+                  if (match.data().linkedUid) {
+                    alert("This athlete is already registered.");
+                    return;
+                  }
+
+                  athleteRosterId = match.id;
+                }
+
+                /* ================= CREATE AUTH USER ================= */
+
+                const cred = await createUserWithEmailAndPassword(auth, email, password);
+                const uid = cred.user.uid;
+
+                /* ================= CREATE USER PROFILE ================= */
+
+                await setDoc(doc(db, "users", uid), {
+                  displayName: displayName.trim(),
+                  role: roleChoice,
+                  teamId: teamId || null,
+                  athleteId: athleteRosterId || null,
+                  createdAt: serverTimestamp()
+                });
+
+                /* ================= LINK ROSTER RECORD ================= */
+
+                if (athleteRosterId && teamId) {
+                  await setDoc(
+                    doc(db, "athletes", teamId, "roster", athleteRosterId),
+                    { linkedUid: uid },
+                    { merge: true }
+                  );
+                }
+
+                /* ================= ADD USER TO TEAM ================= */
+
+                if (teamId) {
+                  await setDoc(
+                    doc(db, "users", uid, "teams", teamId),
+                    {
+                      role: roleChoice,
+                      joinedAt: serverTimestamp()
+                    }
+                  );
+
+                  await updateDoc(
+                    doc(db, "teams", teamId),
+                    {
+                      members: arrayUnion(uid)
+                    }
+                  );
+                }
+
+              } else {
+
                 await signInWithEmailAndPassword(auth, email, password);
-              } catch (err) {
-                alert(err.message);
+
               }
-            }}
-          >
-            Sign In
-          </button>
-        </div>
+
+            } catch (err) {
+              console.error("Auth error:", err);
+              alert(err.message);
+            }
+          }}
+        >
+          {isRegistering ? "Register" : "Sign In"}
+        </button>
+
+        <button
+          style={{
+            marginTop: 10,
+            background: "transparent",
+            color: "var(--accent)"
+          }}
+          onClick={() => setIsRegistering(!isRegistering)}
+        >
+          {isRegistering
+            ? "Already have an account? Sign In"
+            : "Need an account? Register"}
+        </button>
+
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   if (loadingProfile) return <div className="loading">Loading...</div>;
   if (!profile) return <div className="loading">Finalizing account...</div>;
@@ -262,11 +370,8 @@ export default function App() {
             <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
           </>
         )}
-<SidebarItem
-  label="Annual Planner"
-  active={activeTab==="planner"}
-  onClick={()=>setActiveTab("planner")}
-/>
+
+        <SidebarItem label="Annual Planner" active={activeTab==="planner"} onClick={()=>setActiveTab("planner")} />
         <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
       </div>
 
@@ -290,21 +395,12 @@ export default function App() {
             {activeTab === "preseason" && profile.role==="coach" && <PreSeasonMaxEntry team={activeTeam} />}
             {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
             {activeTab === "account" && <Account profile={profile} />}
-{activeTab === "planner" && profile.role==="coach" && (
-  <AnnualPlanner team={activeTeam} />
-)}
+            {activeTab === "planner" && profile.role==="coach" && <AnnualPlanner team={activeTeam} />}
+
           </motion.div>
         </AnimatePresence>
       </div>
-<div className="bottom-nav">
-  <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
-  <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
-  <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
-  {profile.role === "coach" && (
-    <NavItem icon="🧠" label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
-  )}
-  <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
-</div>
+
     </div>
   );
 }
