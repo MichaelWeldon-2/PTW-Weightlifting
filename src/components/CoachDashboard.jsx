@@ -41,13 +41,13 @@ export default function CoachDashboard({ team }) {
     const cutoff = Date.now() - timeFilter * 86400000;
 
     return workouts.filter(w =>
-      w.createdAt?.seconds &&
+      w?.createdAt?.seconds &&
       w.createdAt.seconds * 1000 >= cutoff
     );
 
   }, [workouts, timeFilter]);
 
-  /* ================= ADVANCED INTELLIGENCE ENGINE ================= */
+  /* ================= INTELLIGENCE ENGINE ================= */
 
   const analytics = useMemo(() => {
 
@@ -58,15 +58,14 @@ export default function CoachDashboard({ team }) {
         improving: 0,
         declining: 0,
         alerts: 0,
-        riskIndex: [],
-        athleteOfPeriod: null,
-        insights: [],
-        teamRecommendations: []
+        topPerformer: null,
+        mostImproved: null,
+        fatigueStatus: "Stable"
       };
     }
 
     const sorted = [...filteredWorkouts]
-      .filter(w => w.createdAt?.seconds)
+      .filter(w => w?.createdAt?.seconds)
       .sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
 
     let totalPass = 0;
@@ -76,29 +75,34 @@ export default function CoachDashboard({ team }) {
     const athleteMap = {};
     const progressMap = {};
     const streakMap = {};
-    const insights = [];
 
     sorted.forEach(w => {
 
-      const weight = Number(w.weight || 0);
+      if (!w?.weight) return;
+      if (w.result === "Override") return;
+
+      const weight = Number(w.weight);
+      if (!weight || weight <= 0) return;
 
       totalAttempts++;
       totalVolume += weight;
+
       if (w.result === "Pass") totalPass++;
 
       /* ===== STREAK TRACKING ===== */
 
       const streakKey = `${w.athleteId}-${w.exercise}-${w.weight}`;
-
       if (!streakMap[streakKey]) streakMap[streakKey] = 0;
 
-      if (w.result === "Fail") streakMap[streakKey]++;
-      else streakMap[streakKey] = 0;
+      if (w.result === "Fail") {
+        streakMap[streakKey]++;
+      } else {
+        streakMap[streakKey] = 0;
+      }
 
       /* ===== PROGRESS TRACKING ===== */
 
       const progressKey = `${w.athleteId}-${w.exercise}`;
-
       if (!progressMap[progressKey]) {
         progressMap[progressKey] = {
           athleteName: w.athleteName,
@@ -115,15 +119,22 @@ export default function CoachDashboard({ team }) {
           name: w.athleteName,
           volume: 0,
           attempts: 0,
-          fails: 0
+          fails: 0,
+          weights: []
         };
       }
 
       athleteMap[w.athleteId].volume += weight;
       athleteMap[w.athleteId].attempts++;
-      if (w.result === "Fail") athleteMap[w.athleteId].fails++;
+      athleteMap[w.athleteId].weights.push(weight);
+
+      if (w.result === "Fail") {
+        athleteMap[w.athleteId].fails++;
+      }
 
     });
+
+    /* ===== PASS RATE ===== */
 
     const passRate =
       totalAttempts > 0
@@ -137,77 +148,55 @@ export default function CoachDashboard({ team }) {
 
     Object.values(progressMap).forEach(p => {
       if (p.weights.length >= 2) {
-        if (p.weights[p.weights.length - 1] > p.weights[0]) improving++;
-        if (p.weights[p.weights.length - 1] < p.weights[0]) declining++;
+        const first = p.weights[0];
+        const last = p.weights[p.weights.length - 1];
+
+        if (last > first) improving++;
+        if (last < first) declining++;
       }
     });
 
-    /* ===== ALERTS ===== */
+    /* ===== ALERTS (3 FAIL STREAKS) ===== */
 
     const alerts =
       Object.values(streakMap)
         .filter(v => v >= 3).length;
 
-    /* ===== RISK INDEX ===== */
+    /* ===== TOP PERFORMER ===== */
 
-    const riskIndex =
-      Object.values(athleteMap)
-        .map(a => {
-
-          const failRate =
-            a.attempts > 0 ? a.fails / a.attempts : 0;
-
-          let status = "Stable";
-
-          if (failRate >= 0.5) status = "Critical";
-          else if (failRate >= 0.3) status = "Warning";
-
-          return {
-            name: a.name,
-            status
-          };
-
-        });
-
-    /* ===== ATHLETE OF PERIOD ===== */
-
-    const athleteOfPeriod =
+    const topPerformer =
       Object.values(athleteMap)
         .sort((a,b)=>b.volume - a.volume)[0] || null;
 
-    /* ===== TEAM RECOMMENDATIONS ===== */
+    /* ===== MOST IMPROVED ===== */
 
-    const teamRecommendations = [];
+    let mostImproved = null;
+    let bestImprovement = 0;
 
-    if (passRate < 65) {
-      teamRecommendations.push(
-        "Team intensity too high — reduce load"
-      );
-    }
+    Object.values(athleteMap).forEach(a => {
+      if (a.weights.length >= 2) {
+        const improvement =
+          a.weights[a.weights.length - 1] - a.weights[0];
 
-    if (improving > declining * 2 && improving > 0) {
-      teamRecommendations.push(
-        "Team progressing well — increase block intensity"
-      );
-    }
-
-    /* ===== PLATEAU DETECTION ===== */
-
-    Object.values(progressMap).forEach(p => {
-
-      if (p.weights.length >= 6) {
-
-        const last6 = p.weights.slice(-6);
-
-        if (Math.max(...last6) - Math.min(...last6) <= 5) {
-          insights.push({
-            message: `${p.athleteName} plateauing`
-          });
+        if (improvement > bestImprovement) {
+          bestImprovement = improvement;
+          mostImproved = a;
         }
-
       }
-
     });
+
+    /* ===== FATIGUE ===== */
+
+    const totalFails =
+      Object.values(athleteMap)
+        .reduce((sum,a)=>sum+a.fails,0);
+
+    const failRate =
+      totalAttempts > 0 ? totalFails / totalAttempts : 0;
+
+    let fatigueStatus = "Stable";
+    if (failRate >= 0.5) fatigueStatus = "Critical";
+    else if (failRate >= 0.3) fatigueStatus = "Warning";
 
     return {
       passRate,
@@ -215,10 +204,9 @@ export default function CoachDashboard({ team }) {
       improving,
       declining,
       alerts,
-      riskIndex,
-      athleteOfPeriod,
-      insights,
-      teamRecommendations
+      topPerformer,
+      mostImproved,
+      fatigueStatus
     };
 
   }, [filteredWorkouts]);
@@ -244,8 +232,11 @@ export default function CoachDashboard({ team }) {
       <div className="dashboard-grid">
         <Metric label="Pass Rate" value={`${analytics.passRate}%`} />
         <Metric label="Total Volume" value={`${analytics.totalVolume.toLocaleString()} lbs`} />
-        <Metric label="Improving" value={analytics.improving} />
-        <Metric label="Declining" value={analytics.declining} />
+        <Metric label="Top Performer" value={analytics.topPerformer?.name || "N/A"} />
+        <Metric label="Most Improved" value={analytics.mostImproved?.name || "N/A"} />
+        <Metric label="Improving Athletes" value={analytics.improving} />
+        <Metric label="Declining Athletes" value={analytics.declining} />
+        <Metric label="Team Fatigue" value={analytics.fatigueStatus} />
         <Metric label="Alerts" value={analytics.alerts} />
       </div>
 
