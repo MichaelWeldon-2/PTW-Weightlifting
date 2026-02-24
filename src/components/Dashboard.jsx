@@ -1,24 +1,50 @@
 import { useMemo, useEffect, useState } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { motion } from "framer-motion";
 import AnimatedStat from "./AnimatedStat";
 
-function Dashboard({ profile, workouts = [], team }) {
+function Dashboard({ profile, team }) {
 
   /* ================= STATE ================= */
 
+  const [workouts, setWorkouts] = useState([]);
   const [currentBlock, setCurrentBlock] = useState(null);
   const [competitionCountdown, setCompetitionCountdown] = useState(null);
   const [successFlash, setSuccessFlash] = useState(false);
 
   const isCoach = profile?.role === "coach";
 
+  /* ================= LOAD TEAM WORKOUTS ================= */
+
+  useEffect(() => {
+    if (!team?.id) {
+      setWorkouts([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "workouts"),
+      where("teamId", "==", team.id)
+    );
+
+    const unsub = onSnapshot(q, snap => {
+      setWorkouts(
+        snap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }))
+      );
+    });
+
+    return () => unsub();
+  }, [team?.id]);
+
   /* ================= TEAM FATIGUE ================= */
 
   const teamFatigue = useMemo(() => {
 
-    if (!workouts?.length)
+    if (!workouts.length)
       return { status: "Stable", failRate: 0 };
 
     const recent = workouts.slice(-20);
@@ -36,7 +62,7 @@ function Dashboard({ profile, workouts = [], team }) {
 
   const analytics = useMemo(() => {
 
-    if (!workouts?.length)
+    if (!workouts.length)
       return { topPerformer: null, mostImproved: null, totalVolume: 0 };
 
     const grouped = {};
@@ -150,8 +176,6 @@ function Dashboard({ profile, workouts = [], team }) {
       ? "status-warning"
       : "status-stable";
 
-  /* ================= SAFE EARLY RETURN ================= */
-
   if (!profile) {
     return <div className="loading">Loading dashboard...</div>;
   }
@@ -165,7 +189,7 @@ function Dashboard({ profile, workouts = [], team }) {
         <div className="hero-overlay">
           <h1>{team?.name || "Team Dashboard"}</h1>
           <p>
-            {team?.currentSeason || ""} • {team?.currentBlock || ""} • Week {team?.currentWeek || 0}
+            {team?.currentSeason || ""} • {currentBlock?.name || ""} • Week {team?.currentWeek || 0}
           </p>
         </div>
       </div>
