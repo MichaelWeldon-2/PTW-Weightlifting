@@ -33,7 +33,6 @@ import PreSeasonMaxEntry from "./pages/PreSeasonMaxEntry";
 import Account from "./components/Account";
 import { useEffect, useState } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import AnnualPlanner from "./pages/AnnualPlanner";
 import "./App.css";
 
