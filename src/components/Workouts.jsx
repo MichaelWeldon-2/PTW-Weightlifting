@@ -20,8 +20,9 @@ export default function Workouts({ profile, team }) {
   /* ================= STATE ================= */
 
   const [athletes, setAthletes] = useState([]);
-  const [selectedAthlete, setSelectedAthlete] = useState(""); // ✅ FIXED
-const [maxLoaded, setMaxLoaded] = useState(false);
+  const [selectedAthlete, setSelectedAthlete] = useState("");
+  const [maxLoaded, setMaxLoaded] = useState(false);
+
   const [exercise, setExercise] = useState("Bench");
   const [selectionValue, setSelectionValue] = useState("1");
   const [selectedWeight, setSelectedWeight] = useState(135);
@@ -34,36 +35,45 @@ const [maxLoaded, setMaxLoaded] = useState(false);
 
   const isCoach = profile?.role === "coach";
 
-  /* ================= LOAD TEAM TEMPLATE ================= */
+  /* ================= STEP 1 — DEBUG LOG ================= */
 
   useEffect(() => {
-  if (!team?.id) return;
+    console.log("DEBUG TEMPLATE:", teamTemplate);
+    console.log("DEBUG MAXES:", maxes);
+  }, [teamTemplate, maxes]);
 
-  const loadTemplate = async () => {
-    try {
-      const snap = await getDoc(doc(db, "teamTemplates", team.id));
+  /* ================= STEP 2 — GUARANTEED SAFE TEMPLATE ================= */
 
-      const firestoreTemplate = snap.data()?.template;
+  useEffect(() => {
+    if (!team?.id) return;
 
-      if (
-        firestoreTemplate &&
-        JSON.stringify(firestoreTemplate) !== JSON.stringify(teamTemplate)
-      ) {
-        setTeamTemplate(firestoreTemplate);
+    const loadTemplate = async () => {
+      try {
+        const snap = await getDoc(doc(db, "teamTemplates", team.id));
+        const firestoreTemplate = snap.data()?.template;
+
+        if (
+          firestoreTemplate &&
+          typeof firestoreTemplate === "object" &&
+          Object.keys(firestoreTemplate).length > 0
+        ) {
+          setTeamTemplate(firestoreTemplate);
+        } else {
+          setTeamTemplate(defaultTemplate);
+        }
+
+      } catch (err) {
+        console.error("Template load error:", err);
+        setTeamTemplate(defaultTemplate);
       }
+    };
 
-    } catch (err) {
-      console.error("Template load error:", err);
-    }
-  };
-
-  loadTemplate();
-}, [team?.id]);
+    loadTemplate();
+  }, [team?.id]);
 
   /* ================= LOAD TEAM ATHLETES ================= */
 
   useEffect(() => {
-
     if (!team?.members?.length) {
       setAthletes([]);
       return;
@@ -83,33 +93,34 @@ const [maxLoaded, setMaxLoaded] = useState(false);
     });
 
     return () => unsub();
-
   }, [team?.members]);
 
-  /* ================= LOAD ATHLETE MAXES ================= */
+  /* ================= LOAD MAXES ================= */
 
- useEffect(() => {
+  useEffect(() => {
+    const athleteId = isCoach ? selectedAthlete : profile?.uid;
+    if (!athleteId) return;
 
-  const athleteId = isCoach ? selectedAthlete : profile?.uid;
-  if (!athleteId) return;
+    setMaxLoaded(false);
 
-  setMaxLoaded(false);
+    const loadMaxes = async () => {
+      try {
+        const snap = await getDoc(doc(db, "seasonMaxes", athleteId));
+        if (snap.exists()) {
+          setMaxes(snap.data());
+        } else {
+          setMaxes({});
+        }
+      } catch (err) {
+        console.error("Max load error:", err);
+        setMaxes({});
+      }
 
-  const loadMaxes = async () => {
-    const snap = await getDoc(doc(db, "seasonMaxes", athleteId));
+      setMaxLoaded(true);
+    };
 
-    if (snap.exists()) {
-      setMaxes(snap.data());
-    } else {
-      setMaxes({});
-    }
-
-    setMaxLoaded(true);   // ✅ only render after this
-  };
-
-  loadMaxes();
-
-}, [selectedAthlete, profile?.uid, isCoach]);
+    loadMaxes();
+  }, [selectedAthlete, profile?.uid, isCoach]);
 
   /* ================= CURRENT MAX ================= */
 
@@ -121,32 +132,45 @@ const [maxLoaded, setMaxLoaded] = useState(false);
     }[exercise] || 0;
   }, [maxes, exercise]);
 
-  /* ================= CALCULATE SETS (STABLE) ================= */
+  /* ================= STEP 3 — FINAL SAFETY LAYER ================= */
 
- const calculatedSets = useMemo(() => {
+  const calculatedSets = useMemo(() => {
 
-  if (!teamTemplate || !maxLoaded) return [];
+    if (!maxLoaded) return [];
+    if (!teamTemplate || typeof teamTemplate !== "object") return [];
 
-  const baseWeight =
-    exercise === "Squat" && selectionValue !== "Max"
-      ? Math.round((Number(selectionValue) / 100) * currentMax)
-      : selectedWeight;
+    const baseWeight =
+      exercise === "Squat" && selectionValue !== "Max"
+        ? Math.round((Number(selectionValue) / 100) * currentMax)
+        : selectedWeight;
 
-  let template;
+    let template;
 
-  if (selectionValue === "Max") {
-    template = teamTemplate["Max"];
-  } else if (exercise === "Squat") {
-    template = teamTemplate["Percentage"];
-  } else {
-    template = teamTemplate[`Box${selectionValue}`];
-  }
+    if (selectionValue === "Max") {
+      template = teamTemplate?.Max;
+    } else if (exercise === "Squat") {
+      template = teamTemplate?.Percentage;
+    } else {
+      template = teamTemplate?.[`Box${selectionValue}`];
+    }
 
-  if (!template || !Array.isArray(template)) return [];
+    if (!template || !Array.isArray(template)) return [];
 
-  return calculateSets(template, baseWeight) || [];
+    const resultSets = calculateSets(template, baseWeight);
 
-}, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate, maxLoaded]);
+    if (!Array.isArray(resultSets)) return [];
+
+    return resultSets;
+
+  }, [
+    exercise,
+    selectionValue,
+    selectedWeight,
+    currentMax,
+    teamTemplate,
+    maxLoaded
+  ]);
+
   /* ================= SAVE WORKOUT ================= */
 
   const saveWorkout = async () => {
@@ -188,8 +212,6 @@ const [maxLoaded, setMaxLoaded] = useState(false);
         createdAt: serverTimestamp()
       });
 
-      /* ===== UPDATE MAX ONLY IF PASS + MAX ===== */
-
       if (selectionValue === "Max" && result === "Pass") {
 
         const fieldMap = {
@@ -218,61 +240,6 @@ const [maxLoaded, setMaxLoaded] = useState(false);
       console.error("Workout save error:", err);
       alert("SAVE FAILED: " + err.message);
     }
-  };
-
-  /* ================= DROPDOWNS ================= */
-
-  const weightOptions = Array.from({ length: 59 }, (_, i) => 135 + i * 5);
-
-  const renderDynamicDropdown = () => {
-
-    if (exercise === "Squat") {
-      return (
-        <>
-          <select
-            value={selectionValue}
-            onChange={e => setSelectionValue(e.target.value)}
-          >
-            {Array.from({ length: 14 }, (_, i) => 25 + i * 5).map(p => (
-              <option key={p} value={p}>{p}%</option>
-            ))}
-            <option value="Max">Max</option>
-          </select>
-
-          <select
-            value={selectedWeight}
-            onChange={e => setSelectedWeight(Number(e.target.value))}
-          >
-            {weightOptions.map(w => (
-              <option key={w} value={w}>{w} lbs</option>
-            ))}
-          </select>
-        </>
-      );
-    }
-
-    return (
-      <>
-        <select
-          value={selectionValue}
-          onChange={e => setSelectionValue(e.target.value)}
-        >
-          {[1,2,3,4,5,6].map(b => (
-            <option key={b} value={b}>Box {b}</option>
-          ))}
-          <option value="Max">Max</option>
-        </select>
-
-        <select
-          value={selectedWeight}
-          onChange={e => setSelectedWeight(Number(e.target.value))}
-        >
-          {weightOptions.map(w => (
-            <option key={w} value={w}>{w} lbs</option>
-          ))}
-        </select>
-      </>
-    );
   };
 
   /* ================= UI ================= */
@@ -309,11 +276,9 @@ const [maxLoaded, setMaxLoaded] = useState(false);
           <option>PowerClean</option>
         </select>
 
-        {renderDynamicDropdown()}
-
         {/* Preview Sets */}
         <div style={{ marginTop: 15 }}>
-          {calculatedSets.length > 0 && calculatedSets.map((set, index) => (
+          {calculatedSets.map((set, index) => (
             <div key={index}>
               Set {index + 1}: {set.reps} reps x {set.weight} lbs
             </div>
@@ -333,7 +298,7 @@ const [maxLoaded, setMaxLoaded] = useState(false);
           <input
             value={overrideReason}
             onChange={e => setOverrideReason(e.target.value)}
-            placeholder="Reason (injury, fatigue, technical issue, etc.)"
+            placeholder="Reason (injury, fatigue, etc.)"
           />
         )}
 
