@@ -289,7 +289,15 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </div>
-
+<div className="bottom-nav">
+  <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+  <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+  <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+  {profile.role === "coach" && (
+    <NavItem icon="🧠" label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
+  )}
+  <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
+</div>
     </div>
   );
 }

@@ -273,16 +273,15 @@ input, select {
     flex-direction: column;
   }
 
+  .sidebar {
+    display: none;
+  }
+
   .content {
     padding: 20px 16px 100px 16px;
     max-width: 100%;
   }
 
-}
-
- .sidebar {
-    display: none;
-  }
   .hero-header {
     height: 180px;
     padding: 20px;
@@ -295,7 +294,9 @@ input, select {
   .bottom-nav {
     display: flex;
   }
+
 }
+
 .auth-container {
   width: 100%;
   max-width: 420px;
