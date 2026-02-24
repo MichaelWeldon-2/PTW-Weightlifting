@@ -30,7 +30,7 @@ import CoachDashboard from "./components/CoachDashboard";
 import AthleteDeepDive from "./components/AthleteDeepDive";
 import ProgramBuilder from "./pages/ProgramBuilder";
 import CreateTeam from "./pages/CreateTeam";
-import PreSeasonMaxEntry from "./pages/PreSeasonMaxEntry";
+import HistoricalMaxEntry from "./pages/HistoricalMaxEntry";
 import AnnualPlanner from "./pages/AnnualPlanner";
 import Account from "./components/Account";
 
@@ -392,7 +392,12 @@ if (!user) {
             {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
             {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
             {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "preseason" && profile.role==="coach" && <PreSeasonMaxEntry team={activeTeam} />}
+            {activeTab === "preseason" && profile.role==="coach" && (
+  <HistoricalMaxEntry 
+    team={activeTeam} 
+    profile={profile} 
+  />
+)}
             {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
             {activeTab === "account" && <Account profile={profile} />}
             {activeTab === "planner" && profile.role==="coach" && <AnnualPlanner team={activeTeam} />}
