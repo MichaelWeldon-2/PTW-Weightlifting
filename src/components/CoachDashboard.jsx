@@ -40,10 +40,16 @@ export default function CoachDashboard({ team }) {
 
     const cutoff = Date.now() - timeFilter * 86400000;
 
-    return workouts.filter(w =>
-      w?.createdAt?.seconds &&
-      w.createdAt.seconds * 1000 >= cutoff
-    );
+    return workouts.filter(w => {
+  const timestamp =
+    w.createdAt?.seconds
+      ? w.createdAt.seconds * 1000
+      : w.updatedAt?.seconds
+      ? w.updatedAt.seconds * 1000
+      : null;
+
+  return timestamp && timestamp >= cutoff;
+});
 
   }, [workouts, timeFilter]);
 
