@@ -16,61 +16,27 @@ export default function AthleteDeepDive({ team }) {
   const [selected, setSelected] = useState("");
   const [workouts, setWorkouts] = useState([]);
 
-  /* ================= LOAD TEAM ATHLETES (OPTIMIZED) ================= */
+ /* ================= LOAD ROSTER ================= */
 
-  useEffect(() => {
+useEffect(() => {
+  if (!team?.id) {
+    setAthletes([]);
+    return;
+  }
 
-    if (!team?.id || !team?.members?.length) {
-      setAthletes([]);
-      return;
-    }
+  const rosterRef = collection(db, "athletes", team.id, "roster");
 
-    const loadAthletes = async () => {
+  const unsub = onSnapshot(rosterRef, snap => {
+    const list = snap.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
 
-      try {
+    setAthletes(list);
+  });
 
-        const memberIds = team.members;
-
-        // Firestore "in" query limit = 10
-        const chunks = [];
-        for (let i = 0; i < memberIds.length; i += 10) {
-          chunks.push(memberIds.slice(i, i + 10));
-        }
-
-        const results = [];
-
-        for (let chunk of chunks) {
-          const q = query(
-            collection(db, "users"),
-            where(documentId(), "in", chunk)
-          );
-
-          const unsub = onSnapshot(q, snap => {
-            snap.docs.forEach(docSnap => {
-              const data = docSnap.data();
-              if (data.role === "athlete") {
-                results.push({
-                  id: docSnap.id,
-                  ...data
-                });
-              }
-            });
-
-            setAthletes([...results]);
-          });
-
-          return () => unsub();
-        }
-
-      } catch (err) {
-        console.error("Athlete load error:", err);
-      }
-    };
-
-    loadAthletes();
-
-  }, [team]);
-
+  return () => unsub();
+}, [team?.id]);
   /* ================= LOAD WORKOUTS ================= */
 
   useEffect(() => {
@@ -83,7 +49,7 @@ export default function AthleteDeepDive({ team }) {
     const q = query(
       collection(db, "workouts"),
       where("teamId", "==", team.id),
-      where("athleteId", "==", selected)
+     where("athleteRosterId", "==", selected)
     );
 
     const unsub = onSnapshot(q, snap => {
