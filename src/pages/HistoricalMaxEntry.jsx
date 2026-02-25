@@ -79,53 +79,74 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   /* ================= SINGLE SAVE ================= */
 
-  const handleSave = async () => {
+ const handleSave = async () => {
 
-    if (!isCoach) return alert("Only coaches can add historical data.");
-    if (!team?.id) return alert("Team not loaded");
-    if (!selectedAthlete) return alert("Select athlete");
+  if (!isCoach) {
+    alert("Only coaches can add historical data.");
+    return;
+  }
 
-    const athlete = athletes.find(a => a.id === selectedAthlete);
+  if (!team?.id) {
+    alert("Team not loaded");
+    return;
+  }
 
-    const total =
-      (Number(benchMax) || 0) +
-      (Number(squatMax) || 0) +
-      (Number(powerCleanMax) || 0);
+  if (!selectedAthlete) {
+    alert("Select athlete");
+    return;
+  }
 
-    const snapshotId =
-      `${selectedAthlete}_${season}_${year}_${Date.now()}`;
+  const athlete = athletes.find(a => a.id === selectedAthlete);
 
-    const payload = {
-      teamId: team.id,                     // 🔥 CRITICAL
-      athleteRosterId: selectedAthlete,    // 🔥 CRITICAL
-      athleteDisplayName: athlete?.displayName || "Unknown",
-      season,
-      year: Number(year),
-      bench: Number(benchMax) || 0,
-      squat: Number(squatMax) || 0,
-      powerClean: Number(powerCleanMax) || 0,
-      total,
-      createdAt: serverTimestamp()
-    };
+  const total =
+    (Number(benchMax) || 0) +
+    (Number(squatMax) || 0) +
+    (Number(powerCleanMax) || 0);
 
-    /* ===== 1️⃣ SAVE HISTORY (ARCHIVE) ===== */
+  const snapshotId =
+    `${selectedAthlete}_${season}_${year}`;
 
-    await setDoc(
-      doc(db, "seasonMaxHistory", team.id, "athletes", snapshotId),
-      payload
-    );
-
-    /* ===== 2️⃣ SAVE TO MAIN seasonMaxes (ROOT COLLECTION) ===== */
-
-    await setDoc(
-      doc(db, "seasonMaxes", snapshotId),
-      payload
-    );
-
-    setBenchMax("");
-    setSquatMax("");
-    setPowerCleanMax("");
+  const payload = {
+    teamId: team.id,
+    athleteRosterId: selectedAthlete,
+    athleteDisplayName: athlete?.displayName || "Unknown",
+    season,
+    year: Number(year),
+    benchMax: Number(benchMax) || 0,
+    squatMax: Number(squatMax) || 0,
+    powerCleanMax: Number(powerCleanMax) || 0,
+    total,
+    createdAt: serverTimestamp()
   };
+
+  /* 🔥 1️⃣ Save to History */
+  await setDoc(
+    doc(db, "seasonMaxHistory", team.id, "athletes", `${snapshotId}_${Date.now()}`),
+    payload
+  );
+
+  /* 🔥 2️⃣ Save to Live SeasonMaxes (Leaderboard Source) */
+  await setDoc(
+    doc(db, "seasonMaxes", team.id, "athletes", snapshotId),
+    payload
+  );
+
+  /* 🔥 3️⃣ Save to Current Maxes (Progress Tab Source) */
+  await setDoc(
+    doc(db, "seasonMaxesCurrent", selectedAthlete),
+    {
+      benchMax: payload.benchMax,
+      squatMax: payload.squatMax,
+      powerCleanMax: payload.powerCleanMax,
+      total: payload.total,
+      updatedAt: serverTimestamp()
+    }
+  );
+
+  setBenchMax("");
+  setSquatMax("");
+  setPowerCleanMax("");
+};
 
   /* ================= BULK UPLOAD ================= */
 
