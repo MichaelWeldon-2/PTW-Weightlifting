@@ -387,7 +387,7 @@ export default function App() {
           {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
           {activeTab === "roster" && profile.role==="coach" && <Roster team={activeTeam} />}
           {activeTab === "settings" && profile.role==="coach" && <TeamSettings team={activeTeam} profile={profile} />}
-          {activeTab === "planner" && profile.role==="coach" && <AnnualPlanner team={activeTeam} />}
+          {activeTab === "planner" && (<AnnualPlanner team={activeTeam} profile={profile} />)}
           {activeTab === "account" && <Account profile={profile} />}
 
         </motion.div>

@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
-export default function AnnualPlanner({ team }) {
+export default function AnnualPlanner({ team, profile }) {
 
   const currentYear = new Date().getFullYear();
+  const isCoach = profile?.role === "coach";
 
   const [phases, setPhases] = useState([]);
   const [newPhase, setNewPhase] = useState({
@@ -29,6 +30,8 @@ export default function AnnualPlanner({ team }) {
 
       if (snap.exists()) {
         setPhases(snap.data().phases || []);
+      } else {
+        setPhases([]);
       }
     };
 
@@ -39,6 +42,8 @@ export default function AnnualPlanner({ team }) {
   /* ================= ADD PHASE ================= */
 
   const addPhase = () => {
+
+    if (!isCoach) return;
 
     if (!newPhase.name || !newPhase.start || !newPhase.end) {
       alert("Fill all fields");
@@ -60,7 +65,7 @@ export default function AnnualPlanner({ team }) {
 
   const saveCalendar = async () => {
 
-    if (!team?.id) return;
+    if (!team?.id || !isCoach) return;
 
     await setDoc(
       doc(db, "teams", team.id, "annualCalendar", String(currentYear)),
@@ -76,6 +81,9 @@ export default function AnnualPlanner({ team }) {
   /* ================= DELETE PHASE ================= */
 
   const deletePhase = (index) => {
+
+    if (!isCoach) return;
+
     const updated = [...phases];
     updated.splice(index, 1);
     setPhases(updated);
@@ -88,72 +96,86 @@ export default function AnnualPlanner({ team }) {
 
       <h2>Annual Training Planner ({currentYear})</h2>
 
-      <div style={{ marginBottom: 20 }}>
+      {/* ===== EMPTY STATE FOR ATHLETES ===== */}
+      {!isCoach && phases.length === 0 && (
+        <p>Coach has not published an annual plan yet.</p>
+      )}
 
-        <input
-          placeholder="Phase Name"
-          value={newPhase.name}
-          onChange={e => setNewPhase({ ...newPhase, name: e.target.value })}
-        />
+      {/* ===== PHASE CREATION (COACH ONLY) ===== */}
+      {isCoach && (
+        <div style={{ marginBottom: 20 }}>
 
-        <input
-          type="date"
-          value={newPhase.start}
-          onChange={e => setNewPhase({ ...newPhase, start: e.target.value })}
-        />
+          <input
+            placeholder="Phase Name"
+            value={newPhase.name}
+            onChange={e => setNewPhase({ ...newPhase, name: e.target.value })}
+          />
 
-        <input
-          type="date"
-          value={newPhase.end}
-          onChange={e => setNewPhase({ ...newPhase, end: e.target.value })}
-        />
+          <input
+            type="date"
+            value={newPhase.start}
+            onChange={e => setNewPhase({ ...newPhase, start: e.target.value })}
+          />
 
-        <select
-          value={newPhase.intensity}
-          onChange={e => setNewPhase({ ...newPhase, intensity: e.target.value })}
-        >
-          <option>High</option>
-          <option>Moderate</option>
-          <option>Maintenance</option>
-          <option>Off</option>
-        </select>
+          <input
+            type="date"
+            value={newPhase.end}
+            onChange={e => setNewPhase({ ...newPhase, end: e.target.value })}
+          />
 
-        <select
-          value={newPhase.focus}
-          onChange={e => setNewPhase({ ...newPhase, focus: e.target.value })}
-        >
-          <option>Strength</option>
-          <option>Conditioning</option>
-          <option>In Season</option>
-          <option>Recovery</option>
-        </select>
+          <select
+            value={newPhase.intensity}
+            onChange={e => setNewPhase({ ...newPhase, intensity: e.target.value })}
+          >
+            <option>High</option>
+            <option>Moderate</option>
+            <option>Maintenance</option>
+            <option>Off</option>
+          </select>
 
-        <button onClick={addPhase}>
-          Add Phase
-        </button>
+          <select
+            value={newPhase.focus}
+            onChange={e => setNewPhase({ ...newPhase, focus: e.target.value })}
+          >
+            <option>Strength</option>
+            <option>Conditioning</option>
+            <option>In Season</option>
+            <option>Recovery</option>
+          </select>
 
-      </div>
+          <button onClick={addPhase}>
+            Add Phase
+          </button>
+
+        </div>
+      )}
 
       <hr />
 
+      {/* ===== PHASE LIST (VIEWABLE BY ALL) ===== */}
       {phases.map((phase, index) => (
         <div key={index} className="card" style={{ marginBottom: 10 }}>
           <strong>{phase.name}</strong>
           <div>{phase.start} → {phase.end}</div>
           <div>Intensity: {phase.intensity}</div>
           <div>Focus: {phase.focus}</div>
-          <button
-            style={{ marginTop: 8, background: "var(--danger)" }}
-            onClick={() => deletePhase(index)}
-          >
-            Delete
-          </button>
+
+          {isCoach && (
+            <button
+              style={{ marginTop: 8, background: "var(--danger)" }}
+              onClick={() => deletePhase(index)}
+            >
+              Delete
+            </button>
+          )}
         </div>
       ))}
 
-      <button style={{ marginTop: 20 }} onClick={saveCalendar}>
-        Save Calendar
-      </button>
+      {isCoach && (
+        <button style={{ marginTop: 20 }} onClick={saveCalendar}>
+          Save Calendar
+        </button>
+      )}
 
     </div>
   );
