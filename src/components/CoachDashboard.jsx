@@ -5,7 +5,7 @@ import { db } from "../firebase";
 export default function CoachDashboard({ team }) {
 
   const [workouts, setWorkouts] = useState([]);
-  const [timeFilter, setTimeFilter] = useState(365);
+  const [timeFilter, setTimeFilter] = useState(30);
 
   /* ================= LOAD TEAM WORKOUTS ================= */
 
@@ -41,19 +41,16 @@ export default function CoachDashboard({ team }) {
     const cutoff = Date.now() - timeFilter * 86400000;
 
     return workouts.filter(w => {
-  const timestamp =
-    w.createdAt?.seconds
-      ? w.createdAt.seconds * 1000
-      : w.updatedAt?.seconds
-      ? w.updatedAt.seconds * 1000
-      : null;
+      const timestamp = w.createdAt?.seconds
+        ? w.createdAt.seconds * 1000
+        : null;
 
-  return timestamp && timestamp >= cutoff;
-});
+      return timestamp && timestamp >= cutoff;
+    });
 
   }, [workouts, timeFilter]);
 
-  /* ================= INTELLIGENCE ENGINE ================= */
+  /* ================= ANALYTICS ================= */
 
   const analytics = useMemo(() => {
 
@@ -70,10 +67,6 @@ export default function CoachDashboard({ team }) {
       };
     }
 
-    const sorted = [...filteredWorkouts]
-      .filter(w => w?.createdAt?.seconds)
-      .sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
-
     let totalPass = 0;
     let totalAttempts = 0;
     let totalVolume = 0;
@@ -82,7 +75,7 @@ export default function CoachDashboard({ team }) {
     const progressMap = {};
     const streakMap = {};
 
-    sorted.forEach(w => {
+    filteredWorkouts.forEach(w => {
 
       if (!w?.weight) return;
       if (w.result === "Override") return;
@@ -95,9 +88,7 @@ export default function CoachDashboard({ team }) {
 
       if (w.result === "Pass") totalPass++;
 
-      /* ===== STREAK TRACKING ===== */
-
-      const streakKey = `${w.athleteId}-${w.exercise}-${w.weight}`;
+      const streakKey = `${w.athleteRosterId}-${w.exercise}-${w.weight}`;
       if (!streakMap[streakKey]) streakMap[streakKey] = 0;
 
       if (w.result === "Fail") {
@@ -106,23 +97,19 @@ export default function CoachDashboard({ team }) {
         streakMap[streakKey] = 0;
       }
 
-      /* ===== PROGRESS TRACKING ===== */
-
-      const progressKey = `${w.athleteId}-${w.exercise}`;
+      const progressKey = `${w.athleteRosterId}-${w.exercise}`;
       if (!progressMap[progressKey]) {
         progressMap[progressKey] = {
-          athleteName: w.athleteName,
+          athleteName: w.athleteDisplayName,
           weights: []
         };
       }
 
       progressMap[progressKey].weights.push(weight);
 
-      /* ===== ATHLETE AGGREGATE ===== */
-
-      if (!athleteMap[w.athleteId]) {
-        athleteMap[w.athleteId] = {
-          name: w.athleteName,
+      if (!athleteMap[w.athleteRosterId]) {
+        athleteMap[w.athleteRosterId] = {
+          name: w.athleteDisplayName,
           volume: 0,
           attempts: 0,
           fails: 0,
@@ -130,24 +117,20 @@ export default function CoachDashboard({ team }) {
         };
       }
 
-      athleteMap[w.athleteId].volume += weight;
-      athleteMap[w.athleteId].attempts++;
-      athleteMap[w.athleteId].weights.push(weight);
+      athleteMap[w.athleteRosterId].volume += weight;
+      athleteMap[w.athleteRosterId].attempts++;
+      athleteMap[w.athleteRosterId].weights.push(weight);
 
       if (w.result === "Fail") {
-        athleteMap[w.athleteId].fails++;
+        athleteMap[w.athleteRosterId].fails++;
       }
 
     });
-
-    /* ===== PASS RATE ===== */
 
     const passRate =
       totalAttempts > 0
         ? Math.round((totalPass / totalAttempts) * 100)
         : 0;
-
-    /* ===== IMPROVEMENT ===== */
 
     let improving = 0;
     let declining = 0;
@@ -162,19 +145,13 @@ export default function CoachDashboard({ team }) {
       }
     });
 
-    /* ===== ALERTS (3 FAIL STREAKS) ===== */
-
     const alerts =
       Object.values(streakMap)
         .filter(v => v >= 3).length;
 
-    /* ===== TOP PERFORMER ===== */
-
     const topPerformer =
       Object.values(athleteMap)
         .sort((a,b)=>b.volume - a.volume)[0] || null;
-
-    /* ===== MOST IMPROVED ===== */
 
     let mostImproved = null;
     let bestImprovement = 0;
@@ -190,8 +167,6 @@ export default function CoachDashboard({ team }) {
         }
       }
     });
-
-    /* ===== FATIGUE ===== */
 
     const totalFails =
       Object.values(athleteMap)
@@ -217,23 +192,19 @@ export default function CoachDashboard({ team }) {
 
   }, [filteredWorkouts]);
 
-  /* ================= UI ================= */
-
   return (
     <div className="card">
 
       <h2>🧠 Coach Intelligence Dashboard</h2>
 
-      <div style={{ marginBottom: 20 }}>
-        <select
-          value={timeFilter}
-          onChange={e => setTimeFilter(Number(e.target.value))}
-        >
-          <option value={7}>Last 7 Days</option>
-          <option value={30}>Last 30 Days</option>
-          <option value={90}>Last 90 Days</option>
-        </select>
-      </div>
+      <select
+        value={timeFilter}
+        onChange={e => setTimeFilter(Number(e.target.value))}
+      >
+        <option value={7}>Last 7 Days</option>
+        <option value={30}>Last 30 Days</option>
+        <option value={90}>Last 90 Days</option>
+      </select>
 
       <div className="dashboard-grid">
         <Metric label="Pass Rate" value={`${analytics.passRate}%`} />

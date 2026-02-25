@@ -24,7 +24,7 @@ export default function Goals({ profile }) {
     } else {
       q = query(
         collection(db, "goals"),
-        where("athleteId", "==", profile.uid)
+        where("athleteRosterId", "==", rosterId)
       );
     }
 

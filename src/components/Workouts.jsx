@@ -7,7 +7,6 @@ import {
   where,
   onSnapshot,
   serverTimestamp,
-  documentId,
   getDoc,
   doc
 } from "firebase/firestore";
@@ -35,14 +34,7 @@ export default function Workouts({ profile, team }) {
 
   const isCoach = profile?.role === "coach";
 
-  /* ================= DEBUG ================= */
-
-  useEffect(() => {
-    console.log("TEMPLATE:", teamTemplate);
-    console.log("MAXES:", maxes);
-  }, [teamTemplate, maxes]);
-
-  /* ================= SAFE TEMPLATE LOAD ================= */
+  /* ================= LOAD TEMPLATE ================= */
 
   useEffect(() => {
     if (!team?.id) return;
@@ -70,41 +62,51 @@ export default function Workouts({ profile, team }) {
     loadTemplate();
   }, [team?.id]);
 
-  /* ================= LOAD TEAM ATHLETES ================= */
+  /* ================= LOAD ROSTER ================= */
 
   useEffect(() => {
-    if (!team?.members?.length) {
-      setAthletes([]);
-      return;
-    }
+    if (!team?.id) return;
 
-    const q = query(
-      collection(db, "users"),
-      where(documentId(), "in", team.members.slice(0, 10))
-    );
+    const q = collection(db, "teams", team.id, "roster");
 
     const unsub = onSnapshot(q, snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(u => u.role === "athlete");
-
+      const list = snap.docs.map(d => ({
+        id: d.id, // rosterId
+        ...d.data()
+      }));
       setAthletes(list);
     });
 
     return () => unsub();
-  }, [team?.members]);
+  }, [team?.id]);
+
+  /* ================= DETERMINE CURRENT ROSTER ID ================= */
+
+  const athleteRosterId = useMemo(() => {
+    if (isCoach) return selectedAthlete;
+    return athletes.find(a => a.linkedUid === profile?.uid)?.id || null;
+  }, [isCoach, selectedAthlete, athletes, profile?.uid]);
+
+  const athleteDisplayName = useMemo(() => {
+    if (isCoach) {
+      return athletes.find(a => a.id === selectedAthlete)?.displayName || "";
+    }
+    return profile?.displayName || "";
+  }, [isCoach, selectedAthlete, athletes, profile?.displayName]);
 
   /* ================= LOAD MAXES ================= */
 
   useEffect(() => {
-    const athleteId = isCoach ? selectedAthlete : profile?.uid;
-    if (!athleteId) return;
+    if (!athleteRosterId) return;
 
     setMaxLoaded(false);
 
     const loadMaxes = async () => {
       try {
-        const snap = await getDoc(doc(db, "seasonMaxes", athleteId));
+        const snap = await getDoc(
+          doc(db, "seasonMaxesCurrent", athleteRosterId)
+        );
+
         if (snap.exists()) {
           setMaxes(snap.data());
         } else {
@@ -119,7 +121,7 @@ export default function Workouts({ profile, team }) {
     };
 
     loadMaxes();
-  }, [selectedAthlete, profile?.uid, isCoach]);
+  }, [athleteRosterId]);
 
   /* ================= CURRENT MAX ================= */
 
@@ -156,7 +158,6 @@ export default function Workouts({ profile, team }) {
     if (!template || !Array.isArray(template)) return [];
 
     const sets = calculateSets(template, baseWeight);
-
     return Array.isArray(sets) ? sets : [];
 
   }, [
@@ -168,61 +169,6 @@ export default function Workouts({ profile, team }) {
     maxLoaded
   ]);
 
-  /* ================= DROPDOWN UI ================= */
-
-  const weightOptions = Array.from({ length: 59 }, (_, i) => 135 + i * 5);
-
-  const renderDynamicDropdown = () => {
-
-    if (exercise === "Squat") {
-      return (
-        <>
-          <select
-            value={selectionValue}
-            onChange={e => setSelectionValue(e.target.value)}
-          >
-            {Array.from({ length: 14 }, (_, i) => 25 + i * 5).map(p => (
-              <option key={p} value={p}>{p}%</option>
-            ))}
-            <option value="Max">Max</option>
-          </select>
-
-          <select
-            value={selectedWeight}
-            onChange={e => setSelectedWeight(Number(e.target.value))}
-          >
-            {weightOptions.map(w => (
-              <option key={w} value={w}>{w} lbs</option>
-            ))}
-          </select>
-        </>
-      );
-    }
-
-    return (
-      <>
-        <select
-          value={selectionValue}
-          onChange={e => setSelectionValue(e.target.value)}
-        >
-          {[1,2,3,4,5,6].map(b => (
-            <option key={b} value={b}>Box {b}</option>
-          ))}
-          <option value="Max">Max</option>
-        </select>
-
-        <select
-          value={selectedWeight}
-          onChange={e => setSelectedWeight(Number(e.target.value))}
-        >
-          {weightOptions.map(w => (
-            <option key={w} value={w}>{w} lbs</option>
-          ))}
-        </select>
-      </>
-    );
-  };
-
   /* ================= SAVE WORKOUT ================= */
 
   const saveWorkout = async () => {
@@ -232,82 +178,80 @@ export default function Workouts({ profile, team }) {
       return;
     }
 
-    const athleteId = isCoach ? selectedAthlete : profile?.uid;
-    if (!athleteId) {
-      alert("Select athlete");
+    if (!athleteRosterId) {
+      alert("Select athlete.");
       return;
-    }
-
-    let athleteName = profile?.displayName;
-
-    if (isCoach) {
-      const selected = athletes.find(a => a.id === selectedAthlete);
-      if (!selected) {
-        alert("Invalid athlete selection.");
-        return;
-      }
-      athleteName = selected.displayName;
     }
 
     try {
 
       await addDoc(collection(db, "workouts"), {
-        athleteId,
-        athleteName,
         teamId: team.id,
+        athleteRosterId,
+        athleteDisplayName,
+
         exercise,
         weight: Number(selectedWeight),
         selectionValue,
         result,
         overrideReason: result === "Override" ? overrideReason : null,
+
         createdAt: serverTimestamp()
       });
 
-     if (selectionValue === "Max" && result === "Pass") {
+      /* ===== MAX UPDATE IF NEEDED ===== */
 
-  const fieldMap = {
-    Bench: "benchMax",
-    Squat: "squatMax",
-    PowerClean: "powerCleanMax"
-  };
+      if (selectionValue === "Max" && result === "Pass") {
 
-  const fieldName = fieldMap[exercise];
+        const fieldMap = {
+          Bench: "benchMax",
+          Squat: "squatMax",
+          PowerClean: "powerCleanMax"
+        };
 
-  const maxRef = doc(db, "seasonMaxesCurrent", athleteId);
-  const snap = await getDoc(maxRef);
+        const fieldName = fieldMap[exercise];
 
-  let existing = {
-    benchMax: 0,
-    squatMax: 0,
-    powerCleanMax: 0
-  };
+        const maxRef = doc(
+          db,
+          "seasonMaxesCurrent",
+          athleteRosterId
+        );
 
-  if (snap.exists()) {
-    existing = snap.data();
-  }
+        const snap = await getDoc(maxRef);
 
-  const updated = {
-    ...existing,
-    [fieldName]: Number(selectedWeight)
-  };
+        let existing = {
+          benchMax: 0,
+          squatMax: 0,
+          powerCleanMax: 0
+        };
 
-  const total =
-    (updated.benchMax || 0) +
-    (updated.squatMax || 0) +
-    (updated.powerCleanMax || 0);
+        if (snap.exists()) {
+          existing = snap.data();
+        }
 
-  await setDoc(
-    maxRef,
-    {
-      athleteId,
-      athleteName,
-      ...updated,
-      total,
-      updatedAt: serverTimestamp()
-    },
-    { merge: true }
-  );
-}
+        const updated = {
+          ...existing,
+          [fieldName]: Number(selectedWeight)
+        };
+
+        const total =
+          (updated.benchMax || 0) +
+          (updated.squatMax || 0) +
+          (updated.powerCleanMax || 0);
+
+        await setDoc(
+          maxRef,
+          {
+            athleteRosterId,
+            athleteDisplayName,
+            ...updated,
+            total,
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        );
+      }
+
       setSuccessFlash(true);
       setTimeout(() => setSuccessFlash(false), 1000);
       setOverrideReason("");
@@ -323,7 +267,6 @@ export default function Workouts({ profile, team }) {
   return (
     <div className="workout-wrapper">
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
-
         <h2>Log Workout</h2>
 
         {isCoach && (
@@ -352,7 +295,24 @@ export default function Workouts({ profile, team }) {
           <option>PowerClean</option>
         </select>
 
-        {renderDynamicDropdown()}
+        <select
+          value={selectionValue}
+          onChange={e => setSelectionValue(e.target.value)}
+        >
+          {[1,2,3,4,5,6].map(b => (
+            <option key={b} value={b}>Box {b}</option>
+          ))}
+          <option value="Max">Max</option>
+        </select>
+
+        <select
+          value={selectedWeight}
+          onChange={e => setSelectedWeight(Number(e.target.value))}
+        >
+          {Array.from({ length: 59 }, (_, i) => 135 + i * 5).map(w => (
+            <option key={w} value={w}>{w} lbs</option>
+          ))}
+        </select>
 
         <div style={{ marginTop: 15 }}>
           {calculatedSets.map((set, index) => (

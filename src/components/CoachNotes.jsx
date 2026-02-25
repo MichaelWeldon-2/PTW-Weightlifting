@@ -38,7 +38,7 @@ export default function CoachNotes({
     } else {
       q = query(
         collection(db, "coachNotes"),
-        where("athleteId", "==", profile.uid),
+        where("athleteRosterId", "==", rosterId),
         where("year", "==", selectedYear),
         where("season", "==", selectedSeason)
       );

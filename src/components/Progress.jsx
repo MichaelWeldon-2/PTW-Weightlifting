@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import {
   LineChart,
@@ -10,63 +10,77 @@ import {
   ResponsiveContainer
 } from "recharts";
 
-export default function Progress({ profile }) {
+export default function Progress({ profile, team }) {
 
-  const [records, setRecords] = useState([]);
+  const [record, setRecord] = useState(null);
+  const [rosterId, setRosterId] = useState(null);
+
+  /* ================= FIND ROSTER ID ================= */
 
   useEffect(() => {
+    if (!profile?.uid || !team?.id) return;
 
-    if (!profile || !profile.uid) return;
-
-    const q = query(
-      collection(db, "seasonMaxes"),
-      where("athleteId", "==", profile.uid)
+    const unsub = onSnapshot(
+      doc(db, "teams", team.id, "roster", profile.uid),
+      snap => {
+        if (snap.exists()) {
+          setRosterId(snap.id);
+        }
+      }
     );
-
-    const unsub = onSnapshot(q, snap => {
-      setRecords(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
-    });
 
     return () => unsub();
+  }, [profile?.uid, team?.id]);
 
-  }, [profile]);
+  /* ================= LOAD CURRENT MAX ================= */
 
-  const sorted = useMemo(() => {
-    return [...records].sort((a, b) =>
-      a.year === b.year
-        ? a.season.localeCompare(b.season)
-        : a.year - b.year
+  useEffect(() => {
+    if (!rosterId) return;
+
+    const unsub = onSnapshot(
+      doc(db, "seasonMaxesCurrent", rosterId),
+      snap => {
+        if (snap.exists()) {
+          setRecord(snap.data());
+        }
+      }
     );
-  }, [records]);
+
+    return () => unsub();
+  }, [rosterId]);
+
+  if (!record) {
+    return (
+      <div className="card">
+        <h2>Progress</h2>
+        <p>No records yet.</p>
+      </div>
+    );
+  }
+
+  const data = [
+    { lift: "Bench", value: record.benchMax || 0 },
+    { lift: "Squat", value: record.squatMax || 0 },
+    { lift: "PowerClean", value: record.powerCleanMax || 0 }
+  ];
 
   return (
     <div className="card">
-
       <h2>Progress</h2>
 
-      {sorted.length === 0 && <p>No seasonal records yet.</p>}
-
-      {sorted.length > 0 && (
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={sorted}>
-            <XAxis dataKey="season" />
-            <YAxis />
-            <Tooltip />
-            <Line
-              type="monotone"
-              dataKey="total"
-              stroke="#0e28b1"
-              strokeWidth={3}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      )}
-
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={data}>
+          <XAxis dataKey="lift" />
+          <YAxis />
+          <Tooltip />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="#0e28b1"
+            strokeWidth={3}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }
