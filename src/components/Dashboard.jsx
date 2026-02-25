@@ -1,5 +1,13 @@
 import { useMemo, useEffect, useState } from "react";
-import { doc, getDoc, setDoc, collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  query,
+  where,
+  onSnapshot
+} from "firebase/firestore";
 import { db } from "../firebase";
 import { motion } from "framer-motion";
 import AnimatedStat from "./AnimatedStat";
@@ -9,11 +17,34 @@ function Dashboard({ profile, team }) {
   /* ================= STATE ================= */
 
   const [workouts, setWorkouts] = useState([]);
+  const [roster, setRoster] = useState([]);
   const [currentBlock, setCurrentBlock] = useState(null);
   const [competitionCountdown, setCompetitionCountdown] = useState(null);
   const [successFlash, setSuccessFlash] = useState(false);
   const [currentPhase, setCurrentPhase] = useState(null);
+
   const isCoach = profile?.role === "coach";
+
+  /* ================= LOAD ROSTER ================= */
+
+  useEffect(() => {
+    if (!team?.id) {
+      setRoster([]);
+      return;
+    }
+
+    const rosterRef = collection(db, "athletes", team.id, "roster");
+
+    const unsub = onSnapshot(rosterRef, snap => {
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setRoster(list);
+    });
+
+    return () => unsub();
+  }, [team?.id]);
 
   /* ================= LOAD TEAM WORKOUTS ================= */
 
@@ -39,55 +70,59 @@ function Dashboard({ profile, team }) {
 
     return () => unsub();
   }, [team?.id]);
-useEffect(() => {
-  if (!team?.id) return;
 
-  const phaseRef = doc(db, "annualPlans", team.id);
+  /* ================= CURRENT PHASE ================= */
 
-  getDoc(phaseRef).then(snap => {
+  useEffect(() => {
+    if (!team?.id) return;
 
-    if (!snap.exists()) {
-      setCurrentPhase(null);
-      return;
-    }
+    const phaseRef = doc(db, "annualPlans", team.id);
 
-    const data = snap.data();
-    const today = new Date();
+    getDoc(phaseRef).then(snap => {
 
-    const phase = data.phases?.find(p => {
-      const start = new Date(p.startDate);
-      const end = new Date(p.endDate);
-      return today >= start && today <= end;
-    });
+      if (!snap.exists()) {
+        setCurrentPhase(null);
+        return;
+      }
 
-    if (!phase) {
-      setCurrentPhase(null);
-      return;
-    }
+      const data = snap.data();
+      const today = new Date();
 
-    const start = new Date(phase.startDate);
-    const diffDays = Math.floor(
-      (today - start) / (1000 * 60 * 60 * 24)
-    );
+      const phase = data.phases?.find(p => {
+        const start = new Date(p.startDate);
+        const end = new Date(p.endDate);
+        return today >= start && today <= end;
+      });
 
-    const week = Math.floor(diffDays / 7) + 1;
+      if (!phase) {
+        setCurrentPhase(null);
+        return;
+      }
 
-    const totalWeeks =
-      phase.totalWeeks ||
-      Math.ceil(
-        (new Date(phase.endDate) - start) /
-        (1000 * 60 * 60 * 24 * 7)
+      const start = new Date(phase.startDate);
+      const diffDays = Math.floor(
+        (today - start) / (1000 * 60 * 60 * 24)
       );
 
-    setCurrentPhase({
-      name: phase.name,
-      week,
-      totalWeeks
+      const week = Math.floor(diffDays / 7) + 1;
+
+      const totalWeeks =
+        phase.totalWeeks ||
+        Math.ceil(
+          (new Date(phase.endDate) - start) /
+          (1000 * 60 * 60 * 24 * 7)
+        );
+
+      setCurrentPhase({
+        name: phase.name,
+        week,
+        totalWeeks
+      });
+
     });
 
-  });
+  }, [team?.id]);
 
-}, [team?.id]);
   /* ================= TEAM FATIGUE ================= */
 
   const teamFatigue = useMemo(() => {
@@ -118,14 +153,21 @@ useEffect(() => {
 
     workouts.forEach(w => {
 
-      if (!w?.athleteName) return;
-
-      if (!grouped[w.athleteName])
-        grouped[w.athleteName] = [];
-
       const weight = Number(w.weight) || 0;
-      grouped[w.athleteName].push(weight);
+      if (!weight) return;
+
       totalVolume += weight;
+
+      const rosterEntry = roster.find(r => r.id === w.athleteRosterId);
+      const name =
+        rosterEntry?.displayName ||
+        w.athleteDisplayName ||
+        "Unknown";
+
+      if (!grouped[name])
+        grouped[name] = [];
+
+      grouped[name].push(weight);
     });
 
     const leaders = [];
@@ -151,7 +193,7 @@ useEffect(() => {
       totalVolume
     };
 
-  }, [workouts]);
+  }, [workouts, roster]);
 
   /* ================= LOAD PROGRAM ================= */
 
@@ -230,16 +272,16 @@ useEffect(() => {
 
   /* ================= RENDER ================= */
 
-  return (
-    <div>
+return (
+  <div className="dashboard-wrapper">
 
       <div className="hero-header">
         <div className="hero-overlay">
           <h1>{team?.name || "Team Dashboard"}</h1>
           <p>
             {currentPhase
-  ? `${currentPhase.name} • Week ${currentPhase.week}/${currentPhase.totalWeeks}`
-  : ""}
+              ? `${currentPhase.name} • Week ${currentPhase.week}/${currentPhase.totalWeeks}`
+              : ""}
           </p>
         </div>
       </div>

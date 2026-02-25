@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 
-export default function Leaderboard({ profile }) {
+export default function Leaderboard({ team }) {
 
   const seasons = ["Summer", "Fall", "Winter", "Spring"];
   const currentYear = new Date().getFullYear();
@@ -13,30 +13,50 @@ export default function Leaderboard({ profile }) {
 
   const [seasonData, setSeasonData] = useState([]);
   const [allData, setAllData] = useState([]);
+  const [roster, setRoster] = useState([]);
 
-  /* ================= LOAD DATA ================= */
+  /* ================= LOAD ROSTER ================= */
 
   useEffect(() => {
-    if (!profile?.teamId) return;
+    if (!team?.id) return;
 
-    const q = query(
-      collection(db, "seasonMaxes"),
-      where("teamId", "==", profile.teamId)
-    );
+    const rosterRef = collection(db, "athletes", team.id, "roster");
 
-    const unsub = onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => d.data());
-      setAllData(docs);
-
-      const filtered = docs.filter(d =>
-        d.year === Number(year) && d.season === season
-      );
-
-      setSeasonData(filtered);
+    const unsub = onSnapshot(rosterRef, snap => {
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setRoster(list);
     });
 
     return () => unsub();
-  }, [profile, year, season]);
+  }, [team?.id]);
+
+ /* ================= LOAD SEASON MAX DATA ================= */
+
+useEffect(() => {
+  if (!team?.id) return;
+
+  const ref = collection(db, "seasonMaxes", team.id, "athletes");
+
+  const unsub = onSnapshot(ref, snap => {
+    const docs = snap.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
+
+    setAllData(docs);
+
+    const filtered = docs.filter(d =>
+      d.year === Number(year) && d.season === season
+    );
+
+    setSeasonData(filtered);
+  });
+
+  return () => unsub();
+}, [team?.id, year, season]);
 
   /* ================= CURRENT SORT ================= */
 
@@ -45,11 +65,11 @@ export default function Leaderboard({ profile }) {
 
     const key =
       category === "Bench"
-        ? "bench"
+        ? "benchMax"
         : category === "Squat"
-        ? "squat"
+        ? "squatMax"
         : category === "Power Clean"
-        ? "powerClean"
+        ? "powerCleanMax"
         : "total";
 
     return [...seasonData].sort((a, b) => (b[key] || 0) - (a[key] || 0));
@@ -70,7 +90,7 @@ export default function Leaderboard({ profile }) {
     seasonData.forEach(current => {
 
       const previous = prevSeasonData.find(p =>
-        p.athleteId === current.athleteId
+        p.athleteRosterId === current.athleteRosterId
       );
 
       if (!previous) return;
@@ -81,8 +101,15 @@ export default function Leaderboard({ profile }) {
           ? ((diff / previous.total) * 100).toFixed(1)
           : 0;
 
+      const rosterEntry = roster.find(r =>
+        r.id === current.athleteRosterId
+      );
+
       improvements.push({
-        athleteName: current.athleteName,
+        athleteName:
+          rosterEntry?.displayName ||
+          current.athleteDisplayName ||
+          "Unknown",
         diff,
         percent
       });
@@ -91,7 +118,7 @@ export default function Leaderboard({ profile }) {
 
     return improvements.sort((a, b) => b.diff - a.diff);
 
-  }, [seasonData, allData, year, season]);
+  }, [seasonData, allData, year, season, roster]);
 
   /* ================= UI ================= */
 
@@ -127,18 +154,28 @@ export default function Leaderboard({ profile }) {
       {sorted.length === 0 && <div>No data.</div>}
 
       {sorted.map((athlete, index) => {
+
+        const rosterEntry = roster.find(r =>
+          r.id === athlete.athleteRosterId
+        );
+
+        const resolvedName =
+          rosterEntry?.displayName ||
+          athlete.athleteDisplayName ||
+          "Unknown";
+
         const value =
-          category === "Bench"
-            ? athlete.bench
-            : category === "Squat"
-            ? athlete.squat
-            : category === "Power Clean"
-            ? athlete.powerClean
-            : athlete.total;
+  category === "Bench"
+    ? athlete.benchMax
+    : category === "Squat"
+    ? athlete.squatMax
+    : category === "Power Clean"
+    ? athlete.powerCleanMax
+    : athlete.total;
 
         return (
-          <div key={athlete.athleteId}>
-            #{index + 1} — {athlete.athleteName} — {value || 0} lbs
+          <div key={athlete.athleteRosterId}>
+            #{index + 1} — {resolvedName} — {value || 0} lbs
           </div>
         );
       })}
@@ -151,8 +188,8 @@ export default function Leaderboard({ profile }) {
 
       {mostImproved.map((athlete, index) => (
         <div key={index}>
-          #{index + 1} — {athlete.athleteName}  
-          — +{athlete.diff} lbs  
+          #{index + 1} — {athlete.athleteName}
+          — +{athlete.diff} lbs
           ({athlete.percent}%)
         </div>
       ))}

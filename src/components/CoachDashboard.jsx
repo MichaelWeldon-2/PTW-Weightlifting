@@ -5,7 +5,29 @@ import { db } from "../firebase";
 export default function CoachDashboard({ team }) {
 
   const [workouts, setWorkouts] = useState([]);
+  const [roster, setRoster] = useState([]);
   const [timeFilter, setTimeFilter] = useState(30);
+
+  /* ================= LOAD ROSTER ================= */
+
+  useEffect(() => {
+    if (!team?.id) {
+      setRoster([]);
+      return;
+    }
+
+    const rosterRef = collection(db, "athletes", team.id, "roster");
+
+    const unsub = onSnapshot(rosterRef, snap => {
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setRoster(list);
+    });
+
+    return () => unsub();
+  }, [team?.id]);
 
   /* ================= LOAD TEAM WORKOUTS ================= */
 
@@ -88,6 +110,16 @@ export default function CoachDashboard({ team }) {
 
       if (w.result === "Pass") totalPass++;
 
+      /* ===== NAME RESOLUTION (Roster First) ===== */
+
+      const rosterEntry = roster.find(r => r.id === w.athleteRosterId);
+      const resolvedName =
+        rosterEntry?.displayName ||
+        w.athleteDisplayName ||
+        "Unknown";
+
+      /* ===== STREAK TRACKING ===== */
+
       const streakKey = `${w.athleteRosterId}-${w.exercise}-${w.weight}`;
       if (!streakMap[streakKey]) streakMap[streakKey] = 0;
 
@@ -97,19 +129,23 @@ export default function CoachDashboard({ team }) {
         streakMap[streakKey] = 0;
       }
 
+      /* ===== PROGRESS TRACKING ===== */
+
       const progressKey = `${w.athleteRosterId}-${w.exercise}`;
       if (!progressMap[progressKey]) {
         progressMap[progressKey] = {
-          athleteName: w.athleteDisplayName,
+          athleteName: resolvedName,
           weights: []
         };
       }
 
       progressMap[progressKey].weights.push(weight);
 
+      /* ===== ATHLETE AGGREGATE ===== */
+
       if (!athleteMap[w.athleteRosterId]) {
         athleteMap[w.athleteRosterId] = {
-          name: w.athleteDisplayName,
+          name: resolvedName,
           volume: 0,
           attempts: 0,
           fails: 0,
@@ -127,10 +163,14 @@ export default function CoachDashboard({ team }) {
 
     });
 
+    /* ===== PASS RATE ===== */
+
     const passRate =
       totalAttempts > 0
         ? Math.round((totalPass / totalAttempts) * 100)
         : 0;
+
+    /* ===== IMPROVEMENT ===== */
 
     let improving = 0;
     let declining = 0;
@@ -145,13 +185,19 @@ export default function CoachDashboard({ team }) {
       }
     });
 
+    /* ===== ALERTS ===== */
+
     const alerts =
       Object.values(streakMap)
         .filter(v => v >= 3).length;
 
+    /* ===== TOP PERFORMER ===== */
+
     const topPerformer =
       Object.values(athleteMap)
         .sort((a,b)=>b.volume - a.volume)[0] || null;
+
+    /* ===== MOST IMPROVED ===== */
 
     let mostImproved = null;
     let bestImprovement = 0;
@@ -167,6 +213,8 @@ export default function CoachDashboard({ team }) {
         }
       }
     });
+
+    /* ===== FATIGUE ===== */
 
     const totalFails =
       Object.values(athleteMap)
@@ -190,7 +238,9 @@ export default function CoachDashboard({ team }) {
       fatigueStatus
     };
 
-  }, [filteredWorkouts]);
+  }, [filteredWorkouts, roster]);
+
+  /* ================= UI ================= */
 
   return (
     <div className="card">
