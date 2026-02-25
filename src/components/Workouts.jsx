@@ -6,7 +6,12 @@ import {
   onSnapshot,
   serverTimestamp,
   getDoc,
-  doc
+  getDocs,
+  doc,
+  query,
+  where,
+  orderBy,
+  limit
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { defaultTemplate } from "../utils/boxTemplates";
@@ -17,6 +22,7 @@ export default function Workouts({ profile, team }) {
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("");
   const [maxLoaded, setMaxLoaded] = useState(false);
+  const [lastWorkout, setLastWorkout] = useState(null);
 
   const [exercise, setExercise] = useState("Bench");
   const [selectionValue, setSelectionValue] = useState("1");
@@ -57,7 +63,7 @@ export default function Workouts({ profile, team }) {
     loadTemplate();
   }, [team?.id]);
 
-  /* ================= LOAD ROSTER (FIXED PATH) ================= */
+  /* ================= LOAD ROSTER ================= */
 
   useEffect(() => {
     if (!team?.id) return;
@@ -94,7 +100,7 @@ export default function Workouts({ profile, team }) {
     return profile?.displayName || "";
   }, [isCoach, selectedAthlete, athletes, profile?.displayName]);
 
-  /* ================= LOAD MAXES ================= */
+  /* ================= LOAD LIVE MAXES ================= */
 
   useEffect(() => {
     if (!athleteRosterId) return;
@@ -117,6 +123,32 @@ export default function Workouts({ profile, team }) {
 
     loadMaxes();
   }, [athleteRosterId]);
+
+  /* ================= LOAD LAST WORKOUT ================= */
+
+  useEffect(() => {
+    if (!athleteRosterId || !team?.id) return;
+
+    const loadLastWorkout = async () => {
+      const q = query(
+        collection(db, "workouts"),
+        where("teamId", "==", team.id),
+        where("athleteRosterId", "==", athleteRosterId),
+        orderBy("createdAt", "desc"),
+        limit(1)
+      );
+
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        setLastWorkout(snap.docs[0].data());
+      } else {
+        setLastWorkout(null);
+      }
+    };
+
+    loadLastWorkout();
+  }, [athleteRosterId, team?.id]);
 
   /* ================= CURRENT MAX ================= */
 
@@ -240,6 +272,24 @@ export default function Workouts({ profile, team }) {
   return (
     <div className="workout-wrapper">
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
+
+        {/* 🔥 LAST WORKOUT CARD */}
+        {lastWorkout && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 20,
+              borderLeft: `6px solid ${
+                lastWorkout.result === "Pass" ? "green" : "red"
+              }`
+            }}
+          >
+            <h3>Last Session</h3>
+            <p><strong>Exercise:</strong> {lastWorkout.exercise}</p>
+            <p><strong>Weight:</strong> {lastWorkout.weight} lbs</p>
+            <p><strong>Result:</strong> {lastWorkout.result}</p>
+          </div>
+        )}
 
         <h2>Log Workout</h2>
 

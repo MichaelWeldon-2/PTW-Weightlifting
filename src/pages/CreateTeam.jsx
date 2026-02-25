@@ -2,10 +2,7 @@ import { useState } from "react";
 import {
   doc,
   setDoc,
-  serverTimestamp,
-  collection,
-  getDocs,
-  updateDoc
+  serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -23,8 +20,6 @@ export default function CreateTeam({ profile }) {
       .substring(2, 8)
       .toUpperCase();
   };
-
-  /* ================= CREATE TEAM ================= */
 
   const createTeam = async () => {
 
@@ -45,6 +40,8 @@ export default function CreateTeam({ profile }) {
 
       const teamId = `team_${Date.now()}`;
       const inviteCode = generateInviteCode();
+
+      /* ===== CREATE TEAM DOCUMENT ===== */
 
       await setDoc(doc(db, "teams", teamId), {
 
@@ -69,6 +66,8 @@ export default function CreateTeam({ profile }) {
         organizationId: organizationId || null
       });
 
+      /* ===== ADD TEAM UNDER USER ===== */
+
       await setDoc(
         doc(db, "users", profile.uid, "teams", teamId),
         {
@@ -89,47 +88,6 @@ export default function CreateTeam({ profile }) {
       setLoading(false);
     }
   };
-
-  /* ================= ONE-TIME MIGRATION ================= */
-
-  const runMigration = async () => {
-
-    try {
-
-      const snapshot = await getDocs(collection(db, "teams"));
-
-      for (const teamDoc of snapshot.docs) {
-
-        const data = teamDoc.data();
-
-        // Skip if already migrated
-        if (data.coaches && Array.isArray(data.coaches)) {
-          console.log(`Skipping ${teamDoc.id} (already migrated)`);
-          continue;
-        }
-
-        if (!data.createdBy) {
-          console.log(`Skipping ${teamDoc.id} (no createdBy found)`);
-          continue;
-        }
-
-        await updateDoc(doc(db, "teams", teamDoc.id), {
-          coaches: [data.createdBy],
-          createdBy: null
-        });
-
-        console.log(`Migrated team ${teamDoc.id}`);
-      }
-
-      alert("✅ Migration complete");
-
-    } catch (err) {
-      console.error("Migration error:", err);
-      alert("Migration failed.");
-    }
-  };
-
-  /* ================= UI ================= */
 
   return (
     <div className="card">
@@ -168,18 +126,6 @@ export default function CreateTeam({ profile }) {
           ✅ Team created successfully!
         </div>
       )}
-
-      {/* 🔴 TEMPORARY MIGRATION BUTTON — DELETE AFTER RUNNING ONCE */}
-      <button
-        style={{
-          marginTop: 20,
-          backgroundColor: "red",
-          color: "white"
-        }}
-        onClick={runMigration}
-      >
-        Run Team Migration (One-Time)
-      </button>
 
     </div>
   );

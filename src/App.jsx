@@ -14,14 +14,13 @@ import {
   collection,
   query,
   where,
-  serverTimestamp,
-  updateDoc,
-  arrayUnion
+  serverTimestamp
 } from "firebase/firestore";
 
 import { auth, db } from "./firebase";
 import { motion, AnimatePresence } from "framer-motion";
 
+import TeamSettings from "./pages/TeamSettings";
 import Dashboard from "./components/Dashboard";
 import Workouts from "./components/Workouts";
 import Leaderboard from "./components/Leaderboard";
@@ -34,6 +33,7 @@ import HistoricalMaxEntry from "./pages/HistoricalMaxEntry";
 import AnnualPlanner from "./pages/AnnualPlanner";
 import Account from "./components/Account";
 import Roster from "./pages/Roster";
+
 import "./App.css";
 
 /* ================= NAV COMPONENTS ================= */
@@ -61,6 +61,14 @@ function SidebarItem({ label, active, onClick }) {
   );
 }
 
+function DrawerItem({ label, onClick }) {
+  return (
+    <div className="drawer-item" onClick={onClick}>
+      {label}
+    </div>
+  );
+}
+
 export default function App() {
 
   const [user, setUser] = useState(null);
@@ -69,6 +77,7 @@ export default function App() {
   const [activeTeam, setActiveTeam] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -76,6 +85,11 @@ export default function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [roleChoice, setRoleChoice] = useState("athlete");
   const [inviteCode, setInviteCode] = useState("");
+
+  const setActiveTabAndClose = (tab) => {
+    setActiveTab(tab);
+    setIsDrawerOpen(false);
+  };
 
   /* ================= LOAD TEAMS ================= */
 
@@ -104,7 +118,6 @@ export default function App() {
   /* ================= AUTH LISTENER ================= */
 
   useEffect(() => {
-
     const unsub = onAuthStateChanged(auth, async (u) => {
 
       setUser(u);
@@ -137,213 +150,174 @@ export default function App() {
     });
 
     return () => unsub();
-
   }, []);
 
   /* ================= AUTH SCREEN ================= */
 
-if (!user) {
-  return (
-    <div className="auth-container">
-      <div className="auth-card">
+  if (!user) {
+    return (
+      <div className="auth-container">
+        <div className="auth-card">
 
-        <div className="auth-title">PTW Weightlifting</div>
+          <div className="auth-title">PTW Weightlifting</div>
 
-        <input
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="Email"
-        />
+          <input
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="Email"
+          />
 
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          placeholder="Password"
-        />
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Password"
+          />
 
-        {isRegistering && (
-          <>
-            <input
-              value={displayName}
-              onChange={e => setDisplayName(e.target.value)}
-              placeholder="Full Name (Must Match Roster)"
-            />
-
-            <div style={{ marginBottom: 12 }}>
-              <label>
-                <input
-                  type="radio"
-                  value="coach"
-                  checked={roleChoice === "coach"}
-                  onChange={() => setRoleChoice("coach")}
-                />
-                Coach
-              </label>
-
-              <label style={{ marginLeft: 20 }}>
-                <input
-                  type="radio"
-                  value="athlete"
-                  checked={roleChoice === "athlete"}
-                  onChange={() => setRoleChoice("athlete")}
-                />
-                Athlete
-              </label>
-            </div>
-
-            {roleChoice === "athlete" && (
+          {isRegistering && (
+            <>
               <input
-                value={inviteCode}
-                onChange={e => setInviteCode(e.target.value)}
-                placeholder="Team Invite Code"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                placeholder="Full Name (Must Match Roster)"
               />
-            )}
-          </>
-        )}
 
-        <button
-          onClick={async () => {
-            try {
+              <div style={{ marginBottom: 12 }}>
+                <label>
+                  <input
+                    type="radio"
+                    value="coach"
+                    checked={roleChoice === "coach"}
+                    onChange={() => setRoleChoice("coach")}
+                  />
+                  Coach
+                </label>
 
-              if (isRegistering) {
+                <label style={{ marginLeft: 20 }}>
+                  <input
+                    type="radio"
+                    value="athlete"
+                    checked={roleChoice === "athlete"}
+                    onChange={() => setRoleChoice("athlete")}
+                  />
+                  Athlete
+                </label>
+              </div>
 
-                if (!email || !password) {
-                  alert("Enter email and password.");
-                  return;
-                }
+              {roleChoice === "athlete" && (
+                <input
+                  value={inviteCode}
+                  onChange={e => setInviteCode(e.target.value)}
+                  placeholder="Team Invite Code"
+                />
+              )}
+            </>
+          )}
 
-                if (!displayName.trim()) {
-                  alert("Enter full name.");
-                  return;
-                }
+          <button
+            onClick={async () => {
+              try {
 
-                let teamId = null;
-                let athleteRosterId = null;
+                if (isRegistering) {
 
-                /* ================= ATHLETE REGISTRATION ================= */
+                  let teamId = null;
+                  let athleteRosterId = null;
 
-                if (roleChoice === "athlete") {
+                  if (roleChoice === "athlete") {
 
-                  if (!inviteCode.trim()) {
-                    alert("Invite code required.");
-                    return;
-                  }
+                    const teamQuery = query(
+                      collection(db, "teams"),
+                      where("inviteCode", "==", inviteCode.trim().toUpperCase())
+                    );
 
-                  const teamQuery = query(
-                    collection(db, "teams"),
-                    where("inviteCode", "==", inviteCode.trim().toUpperCase())
-                  );
-
-                  const teamSnap = await getDocs(teamQuery);
-
-                  if (teamSnap.empty) {
-                    alert("Invalid invite code.");
-                    return;
-                  }
-
-                  teamId = teamSnap.docs[0].id;
-
-                  const rosterRef = collection(db, "athletes", teamId, "roster");
-                  const rosterSnap = await getDocs(rosterRef);
-
-                  const normalizedName = displayName
-                    .toLowerCase()
-                    .trim();
-
-                  const match = rosterSnap.docs.find(d =>
-                    d.data().displayName?.toLowerCase().trim() === normalizedName
-                  );
-
-                  if (!match) {
-                    alert("No roster record found. Contact your coach.");
-                    return;
-                  }
-
-                  if (match.data().linkedUid) {
-                    alert("This athlete is already registered.");
-                    return;
-                  }
-
-                  athleteRosterId = match.id;
-                }
-
-                /* ================= CREATE AUTH USER ================= */
-
-                const cred = await createUserWithEmailAndPassword(auth, email, password);
-                const uid = cred.user.uid;
-
-                /* ================= CREATE USER PROFILE ================= */
-
-                await setDoc(doc(db, "users", uid), {
-                  displayName: displayName.trim(),
-                  role: roleChoice,
-                  teamId: teamId || null,
-                  athleteId: athleteRosterId || null,
-                  createdAt: serverTimestamp()
-                });
-
-                /* ================= LINK ROSTER RECORD ================= */
-
-                if (athleteRosterId && teamId) {
-                  await setDoc(
-                    doc(db, "athletes", teamId, "roster", athleteRosterId),
-                    { linkedUid: uid },
-                    { merge: true }
-                  );
-                }
-
-                /* ================= ADD USER TO TEAM ================= */
-
-                if (teamId) {
-                  await setDoc(
-                    doc(db, "users", uid, "teams", teamId),
-                    {
-                      role: roleChoice,
-                      joinedAt: serverTimestamp()
+                    const teamSnap = await getDocs(teamQuery);
+                    if (teamSnap.empty) {
+                      alert("Invalid invite code.");
+                      return;
                     }
-                  );
 
-                  await updateDoc(
-                    doc(db, "teams", teamId),
-                    {
-                      members: arrayUnion(uid)
+                    teamId = teamSnap.docs[0].id;
+
+                    const rosterRef = collection(db, "athletes", teamId, "roster");
+                    const rosterSnap = await getDocs(rosterRef);
+
+                    const normalizedName = displayName.toLowerCase().trim();
+
+                    const match = rosterSnap.docs.find(d =>
+                      d.data().displayName?.toLowerCase().trim() === normalizedName
+                    );
+
+                    if (!match) {
+                      alert("No roster record found.");
+                      return;
                     }
-                  );
+
+                    if (match.data().linkedUid) {
+                      alert("Athlete already registered.");
+                      return;
+                    }
+
+                    athleteRosterId = match.id;
+                  }
+
+                  const cred = await createUserWithEmailAndPassword(auth, email, password);
+                  const uid = cred.user.uid;
+
+                  await setDoc(doc(db, "users", uid), {
+                    displayName: displayName.trim(),
+                    role: roleChoice,
+                    teamId: teamId || null,
+                    athleteId: athleteRosterId || null,
+                    createdAt: serverTimestamp()
+                  });
+
+                  if (athleteRosterId && teamId) {
+                    await setDoc(
+                      doc(db, "athletes", teamId, "roster", athleteRosterId),
+                      { linkedUid: uid },
+                      { merge: true }
+                    );
+                  }
+
+                  if (teamId) {
+                    await setDoc(
+                      doc(db, "users", uid, "teams", teamId),
+                      {
+                        role: roleChoice,
+                        joinedAt: serverTimestamp()
+                      }
+                    );
+                  }
+
+                } else {
+                  await signInWithEmailAndPassword(auth, email, password);
                 }
 
-              } else {
-
-                await signInWithEmailAndPassword(auth, email, password);
-
+              } catch (err) {
+                alert(err.message);
               }
+            }}
+          >
+            {isRegistering ? "Register" : "Sign In"}
+          </button>
 
-            } catch (err) {
-              console.error("Auth error:", err);
-              alert(err.message);
-            }
-          }}
-        >
-          {isRegistering ? "Register" : "Sign In"}
-        </button>
+          <button
+            style={{
+              marginTop: 10,
+              background: "transparent",
+              color: "var(--accent)"
+            }}
+            onClick={() => setIsRegistering(!isRegistering)}
+          >
+            {isRegistering
+              ? "Already have an account? Sign In"
+              : "Need an account? Register"}
+          </button>
 
-        <button
-          style={{
-            marginTop: 10,
-            background: "transparent",
-            color: "var(--accent)"
-          }}
-          onClick={() => setIsRegistering(!isRegistering)}
-        >
-          {isRegistering
-            ? "Already have an account? Sign In"
-            : "Need an account? Register"}
-        </button>
-
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   if (loadingProfile) return <div className="loading">Loading...</div>;
   if (!profile) return <div className="loading">Finalizing account...</div>;
@@ -368,11 +342,8 @@ if (!user) {
             <SidebarItem label="Program Builder" active={activeTab==="program"} onClick={()=>setActiveTab("program")} />
             <SidebarItem label="Historical Max Entry" active={activeTab==="preseason"} onClick={()=>setActiveTab("preseason")} />
             <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
-            <SidebarItem
-  label="Roster"
-  active={activeTab==="roster"}
-  onClick={()=>setActiveTab("roster")}
-/>
+            <SidebarItem label="Roster" active={activeTab==="roster"} onClick={()=>setActiveTab("roster")} />
+            <SidebarItem label="Team Settings" active={activeTab==="settings"} onClick={()=>setActiveTab("settings")} />
           </>
         )}
 
@@ -381,6 +352,12 @@ if (!user) {
       </div>
 
       <div className="content">
+
+        <div className="mobile-header">
+          <div className="mobile-title">PTW</div>
+          <button className="hamburger-btn" onClick={()=>setIsDrawerOpen(true)}>☰</button>
+        </div>
+
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab + activeTeam?.id}
@@ -397,57 +374,55 @@ if (!user) {
             {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
             {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
             {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "preseason" && profile.role==="coach" && (
-  <HistoricalMaxEntry 
-    team={activeTeam} 
-    profile={profile} 
-  />
-)}
+            {activeTab === "preseason" && profile.role==="coach" && <HistoricalMaxEntry team={activeTeam} profile={profile} />}
             {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
-            {activeTab === "account" && <Account profile={profile} />}
+            {activeTab === "roster" && profile.role==="coach" && <Roster team={activeTeam} />}
+            {activeTab === "settings" && profile.role==="coach" && <TeamSettings team={activeTeam} profile={profile} />}
             {activeTab === "planner" && profile.role==="coach" && <AnnualPlanner team={activeTeam} />}
-<SidebarItem
-  label="Roster"
-  active={activeTab==="roster"}
-  onClick={()=>setActiveTab("roster")}
-/>
+            {activeTab === "account" && <Account profile={profile} />}
+
           </motion.div>
         </AnimatePresence>
       </div>
-<div className="bottom-nav">
-  <NavItem
-    icon="🏠"
-    label="Home"
-    active={activeTab==="dashboard"}
-    onClick={()=>setActiveTab("dashboard")}
-  />
-  <NavItem
-    icon="💪"
-    label="Workouts"
-    active={activeTab==="workouts"}
-    onClick={()=>setActiveTab("workouts")}
-  />
-  <NavItem
-    icon="📈"
-    label="Progress"
-    active={activeTab==="progress"}
-    onClick={()=>setActiveTab("progress")}
-  />
-  {profile.role === "coach" && (
-    <NavItem
-      icon="🧠"
-      label="Coach"
-      active={activeTab==="coach"}
-      onClick={()=>setActiveTab("coach")}
-    />
-  )}
-  <NavItem
-    icon="👤"
-    label="Account"
-    active={activeTab==="account"}
-    onClick={()=>setActiveTab("account")}
-  />
-</div>
+
+      <div className="bottom-nav">
+        <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+        <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+        <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+        {profile.role === "coach" && (
+          <NavItem icon="🧠" label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
+        )}
+        <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
+      </div>
+
+      {isDrawerOpen && (
+        <div className="drawer-overlay" onClick={()=>setIsDrawerOpen(false)}>
+          <div className="drawer" onClick={(e)=>e.stopPropagation()}>
+            <h3>Menu</h3>
+
+            <DrawerItem label="Dashboard" onClick={()=>setActiveTabAndClose("dashboard")} />
+            <DrawerItem label="Workouts" onClick={()=>setActiveTabAndClose("workouts")} />
+            <DrawerItem label="Progress" onClick={()=>setActiveTabAndClose("progress")} />
+            <DrawerItem label="Leaderboard" onClick={()=>setActiveTabAndClose("leaderboard")} />
+
+            {profile.role === "coach" && (
+              <>
+                <DrawerItem label="Coach" onClick={()=>setActiveTabAndClose("coach")} />
+                <DrawerItem label="Analytics" onClick={()=>setActiveTabAndClose("deep")} />
+                <DrawerItem label="Program Builder" onClick={()=>setActiveTabAndClose("program")} />
+                <DrawerItem label="Historical Max Entry" onClick={()=>setActiveTabAndClose("preseason")} />
+                <DrawerItem label="Create Team" onClick={()=>setActiveTabAndClose("createTeam")} />
+                <DrawerItem label="Roster" onClick={()=>setActiveTabAndClose("roster")} />
+                <DrawerItem label="Team Settings" onClick={()=>setActiveTabAndClose("settings")} />
+                <DrawerItem label="Annual Planner" onClick={()=>setActiveTabAndClose("planner")} />
+              </>
+            )}
+
+            <DrawerItem label="Account" onClick={()=>setActiveTabAndClose("account")} />
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
