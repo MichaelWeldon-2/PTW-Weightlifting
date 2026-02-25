@@ -3,8 +3,6 @@ import {
   collection,
   addDoc,
   setDoc,
-  query,
-  where,
   onSnapshot,
   serverTimestamp,
   getDoc,
@@ -15,8 +13,6 @@ import { defaultTemplate } from "../utils/boxTemplates";
 import { calculateSets } from "../utils/calculateSets";
 
 export default function Workouts({ profile, team }) {
-
-  /* ================= STATE ================= */
 
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("");
@@ -53,8 +49,7 @@ export default function Workouts({ profile, team }) {
         } else {
           setTeamTemplate(defaultTemplate);
         }
-      } catch (err) {
-        console.error("Template load error:", err);
+      } catch {
         setTeamTemplate(defaultTemplate);
       }
     };
@@ -62,16 +57,16 @@ export default function Workouts({ profile, team }) {
     loadTemplate();
   }, [team?.id]);
 
-  /* ================= LOAD ROSTER ================= */
+  /* ================= LOAD ROSTER (FIXED PATH) ================= */
 
   useEffect(() => {
     if (!team?.id) return;
 
-    const q = collection(db, "teams", team.id, "roster");
+    const rosterRef = collection(db, "athletes", team.id, "roster");
 
-    const unsub = onSnapshot(q, snap => {
+    const unsub = onSnapshot(rosterRef, snap => {
       const list = snap.docs.map(d => ({
-        id: d.id, // rosterId
+        id: d.id,
         ...d.data()
       }));
       setAthletes(list);
@@ -80,11 +75,16 @@ export default function Workouts({ profile, team }) {
     return () => unsub();
   }, [team?.id]);
 
-  /* ================= DETERMINE CURRENT ROSTER ID ================= */
+  /* ================= DETERMINE ROSTER ID ================= */
 
   const athleteRosterId = useMemo(() => {
     if (isCoach) return selectedAthlete;
-    return athletes.find(a => a.linkedUid === profile?.uid)?.id || null;
+
+    const match = athletes.find(
+      a => a.linkedUid === profile?.uid
+    );
+
+    return match?.id || null;
   }, [isCoach, selectedAthlete, athletes, profile?.uid]);
 
   const athleteDisplayName = useMemo(() => {
@@ -107,13 +107,8 @@ export default function Workouts({ profile, team }) {
           doc(db, "seasonMaxesCurrent", athleteRosterId)
         );
 
-        if (snap.exists()) {
-          setMaxes(snap.data());
-        } else {
-          setMaxes({});
-        }
-      } catch (err) {
-        console.error("Max load error:", err);
+        setMaxes(snap.exists() ? snap.data() : {});
+      } catch {
         setMaxes({});
       }
 
@@ -138,7 +133,6 @@ export default function Workouts({ profile, team }) {
   const calculatedSets = useMemo(() => {
 
     if (!maxLoaded) return [];
-    if (!teamTemplate || typeof teamTemplate !== "object") return [];
 
     const baseWeight =
       exercise === "Squat" && selectionValue !== "Max"
@@ -155,10 +149,9 @@ export default function Workouts({ profile, team }) {
       template = teamTemplate?.[`Box${selectionValue}`];
     }
 
-    if (!template || !Array.isArray(template)) return [];
+    if (!Array.isArray(template)) return [];
 
-    const sets = calculateSets(template, baseWeight);
-    return Array.isArray(sets) ? sets : [];
+    return calculateSets(template, baseWeight);
 
   }, [
     exercise,
@@ -173,15 +166,8 @@ export default function Workouts({ profile, team }) {
 
   const saveWorkout = async () => {
 
-    if (!team?.id) {
-      alert("Team not loaded.");
-      return;
-    }
-
-    if (!athleteRosterId) {
-      alert("Select athlete.");
-      return;
-    }
+    if (!team?.id) return alert("Team not loaded.");
+    if (!athleteRosterId) return alert("Select athlete.");
 
     try {
 
@@ -189,17 +175,13 @@ export default function Workouts({ profile, team }) {
         teamId: team.id,
         athleteRosterId,
         athleteDisplayName,
-
         exercise,
         weight: Number(selectedWeight),
         selectionValue,
         result,
         overrideReason: result === "Override" ? overrideReason : null,
-
         createdAt: serverTimestamp()
       });
-
-      /* ===== MAX UPDATE IF NEEDED ===== */
 
       if (selectionValue === "Max" && result === "Pass") {
 
@@ -219,15 +201,11 @@ export default function Workouts({ profile, team }) {
 
         const snap = await getDoc(maxRef);
 
-        let existing = {
+        const existing = snap.exists() ? snap.data() : {
           benchMax: 0,
           squatMax: 0,
           powerCleanMax: 0
         };
-
-        if (snap.exists()) {
-          existing = snap.data();
-        }
 
         const updated = {
           ...existing,
@@ -239,17 +217,13 @@ export default function Workouts({ profile, team }) {
           (updated.squatMax || 0) +
           (updated.powerCleanMax || 0);
 
-        await setDoc(
-          maxRef,
-          {
-            athleteRosterId,
-            athleteDisplayName,
-            ...updated,
-            total,
-            updatedAt: serverTimestamp()
-          },
-          { merge: true }
-        );
+        await setDoc(maxRef, {
+          athleteRosterId,
+          athleteDisplayName,
+          ...updated,
+          total,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
       }
 
       setSuccessFlash(true);
@@ -257,7 +231,6 @@ export default function Workouts({ profile, team }) {
       setOverrideReason("");
 
     } catch (err) {
-      console.error("Workout save error:", err);
       alert("SAVE FAILED: " + err.message);
     }
   };
@@ -267,6 +240,7 @@ export default function Workouts({ profile, team }) {
   return (
     <div className="workout-wrapper">
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
+
         <h2>Log Workout</h2>
 
         {isCoach && (
@@ -335,7 +309,7 @@ export default function Workouts({ profile, team }) {
           <input
             value={overrideReason}
             onChange={e => setOverrideReason(e.target.value)}
-            placeholder="Reason (injury, fatigue, etc.)"
+            placeholder="Reason"
           />
         )}
 
