@@ -33,7 +33,7 @@ import CreateTeam from "./pages/CreateTeam";
 import HistoricalMaxEntry from "./pages/HistoricalMaxEntry";
 import AnnualPlanner from "./pages/AnnualPlanner";
 import Account from "./components/Account";
-
+import Roster from "./pages/Roster";
 import "./App.css";
 
 /* ================= NAV COMPONENTS ================= */
@@ -368,6 +368,11 @@ if (!user) {
             <SidebarItem label="Program Builder" active={activeTab==="program"} onClick={()=>setActiveTab("program")} />
             <SidebarItem label="Historical Max Entry" active={activeTab==="preseason"} onClick={()=>setActiveTab("preseason")} />
             <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
+            <SidebarItem
+  label="Roster"
+  active={activeTab==="roster"}
+  onClick={()=>setActiveTab("roster")}
+/>
           </>
         )}
 
@@ -401,11 +406,48 @@ if (!user) {
             {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
             {activeTab === "account" && <Account profile={profile} />}
             {activeTab === "planner" && profile.role==="coach" && <AnnualPlanner team={activeTeam} />}
-
+<SidebarItem
+  label="Roster"
+  active={activeTab==="roster"}
+  onClick={()=>setActiveTab("roster")}
+/>
           </motion.div>
         </AnimatePresence>
       </div>
-
+<div className="bottom-nav">
+  <NavItem
+    icon="🏠"
+    label="Home"
+    active={activeTab==="dashboard"}
+    onClick={()=>setActiveTab("dashboard")}
+  />
+  <NavItem
+    icon="💪"
+    label="Workouts"
+    active={activeTab==="workouts"}
+    onClick={()=>setActiveTab("workouts")}
+  />
+  <NavItem
+    icon="📈"
+    label="Progress"
+    active={activeTab==="progress"}
+    onClick={()=>setActiveTab("progress")}
+  />
+  {profile.role === "coach" && (
+    <NavItem
+      icon="🧠"
+      label="Coach"
+      active={activeTab==="coach"}
+      onClick={()=>setActiveTab("coach")}
+    />
+  )}
+  <NavItem
+    icon="👤"
+    label="Account"
+    active={activeTab==="account"}
+    onClick={()=>setActiveTab("account")}
+  />
+</div>
     </div>
   );
 }

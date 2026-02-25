@@ -89,7 +89,7 @@ export default function AthleteProgress({ profile, team }) {
 
       const q = query(
         ref,
-        where("athleteId", "==", selectedAthlete)
+        where("athleteRosterId", "==", selectedRosterId)
       );
 
       const snap = await getDocs(q);

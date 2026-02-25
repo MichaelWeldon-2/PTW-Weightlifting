@@ -4,8 +4,6 @@ import {
   doc,
   setDoc,
   deleteDoc,
-  query,
-  where,
   onSnapshot,
   serverTimestamp
 } from "firebase/firestore";
@@ -25,65 +23,50 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   const [history, setHistory] = useState([]);
 
+  /* 🔥 BULK TOOL STATE */
+  const [bulkInput, setBulkInput] = useState("");
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+
   const isCoach = profile?.role === "coach";
 
-  /* ================= AUTO SELECT SELF ================= */
+  /* ================= LOAD ROSTER ================= */
 
   useEffect(() => {
-    if (profile?.role === "athlete") {
-      setSelectedAthlete(profile.uid);
+    if (!team?.id) {
+      setAthletes([]);
+      return;
     }
-  }, [profile]);
 
-  /* ================= LOAD ATHLETES ================= */
+    const rosterRef = collection(db, "athletes", team.id, "roster");
 
-  useEffect(() => {
-
-    if (!team?.members?.length) return;
-
-    const q = query(
-      collection(db, "users"),
-      where("__name__", "in", team.members.slice(0, 10))
-    );
-
-    const unsub = onSnapshot(q, snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(u => u.role === "athlete");
-
+    const unsub = onSnapshot(rosterRef, snap => {
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
       setAthletes(list);
     });
 
     return () => unsub();
-
-  }, [team?.members]);
+  }, [team?.id]);
 
   /* ================= LOAD HISTORY ================= */
 
   useEffect(() => {
-
     if (!team?.id) return;
 
     const ref = collection(db, "seasonMaxHistory", team.id, "athletes");
 
     const unsub = onSnapshot(ref, snap => {
-
       const docs = snap.docs.map(d => ({
         id: d.id,
         ...d.data()
       }));
-
-      // Sort newest first
-      docs.sort((a, b) => {
-        if (a.year !== b.year) return b.year - a.year;
-        return a.season.localeCompare(b.season);
-      });
-
       setHistory(docs);
     });
 
     return () => unsub();
-
   }, [team?.id]);
 
   /* ================= TOTAL PREVIEW ================= */
@@ -96,54 +79,40 @@ export default function HistoricalMaxEntry({ team, profile }) {
     );
   }, [benchMax, squatMax, powerCleanMax]);
 
-  /* ================= FILTER HISTORY ================= */
-
-  const filteredHistory = useMemo(() => {
-
-    return history.filter(h => {
-
-      if (!isCoach && h.athleteId !== profile.uid)
-        return false;
-
-      if (isCoach && selectedAthlete && h.athleteId !== selectedAthlete)
-        return false;
-
-      return true;
-
-    });
-
-  }, [history, selectedAthlete, profile, isCoach]);
-
-  /* ================= SAVE SNAPSHOT ================= */
+  /* ================= SINGLE SAVE ================= */
 
   const handleSave = async () => {
+
+    if (!isCoach) {
+      alert("Only coaches can add historical data.");
+      return;
+    }
 
     if (!team?.id) {
       alert("Team not loaded");
       return;
     }
 
-    const athleteId = isCoach ? selectedAthlete : profile.uid;
-
-    if (!athleteId) {
+    if (!selectedAthlete) {
       alert("Select athlete");
       return;
     }
 
-    const athleteName =
-      athletes.find(a => a.id === athleteId)?.displayName ||
-      profile.displayName;
+    const athlete = athletes.find(a => a.id === selectedAthlete);
 
-    const total = totalPreview;
+    const total =
+      (Number(benchMax) || 0) +
+      (Number(squatMax) || 0) +
+      (Number(powerCleanMax) || 0);
 
     const snapshotId =
-      `${athleteId}_${season}_${year}_${Date.now()}`;
+      `${selectedAthlete}_${season}_${year}_${Date.now()}`;
 
     await setDoc(
       doc(db, "seasonMaxHistory", team.id, "athletes", snapshotId),
       {
-        athleteId,
-        athleteName,
+        athleteRosterId: selectedAthlete,
+        athleteName: athlete?.displayName || "Unknown",
         season,
         year: Number(year),
         benchMax: Number(benchMax) || 0,
@@ -159,7 +128,87 @@ export default function HistoricalMaxEntry({ team, profile }) {
     setPowerCleanMax("");
   };
 
-  /* ================= DELETE SNAPSHOT ================= */
+  /* ================= BULK UPLOAD ================= */
+
+  const handleBulkUpload = async () => {
+
+    if (!isCoach) {
+      alert("Only coaches can bulk upload.");
+      return;
+    }
+
+    if (!bulkInput.trim()) {
+      alert("Paste CSV data first.");
+      return;
+    }
+
+    setBulkLoading(true);
+    setBulkResult(null);
+
+    try {
+
+      const lines = bulkInput.trim().split("\n");
+      const dataLines = lines.slice(1); // skip header
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const line of dataLines) {
+
+        const [name, season, year, bench, squat, clean] =
+          line.split(",");
+
+        const rosterMatch = athletes.find(a =>
+          a.displayName?.toLowerCase().trim() ===
+          name.toLowerCase().trim()
+        );
+
+        if (!rosterMatch) {
+          failCount++;
+          continue;
+        }
+
+        const total =
+          (Number(bench) || 0) +
+          (Number(squat) || 0) +
+          (Number(clean) || 0);
+
+        const snapshotId =
+          `${rosterMatch.id}_${season}_${year}_${Date.now()}_${Math.random()}`;
+
+        await setDoc(
+          doc(db, "seasonMaxHistory", team.id, "athletes", snapshotId),
+          {
+            athleteRosterId: rosterMatch.id,
+            athleteName: rosterMatch.displayName,
+            season,
+            year: Number(year),
+            benchMax: Number(bench) || 0,
+            squatMax: Number(squat) || 0,
+            powerCleanMax: Number(clean) || 0,
+            total,
+            createdAt: serverTimestamp()
+          }
+        );
+
+        successCount++;
+      }
+
+      setBulkResult(
+        `✅ Uploaded ${successCount} records. ❌ Failed: ${failCount}`
+      );
+
+      setBulkInput("");
+
+    } catch (err) {
+      console.error(err);
+      alert("Bulk upload failed.");
+    }
+
+    setBulkLoading(false);
+  };
+
+  /* ================= DELETE ================= */
 
   const handleDelete = async (id) => {
     if (!isCoach || !team?.id) return;
@@ -175,112 +224,119 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
       <h2>🏋 Historical Max Entry</h2>
 
-      {/* ENTRY FORM */}
+      {isCoach && (
+        <>
+          <div className="dashboard-grid">
 
-      <div className="dashboard-grid">
+            <select
+              value={selectedAthlete}
+              onChange={e => setSelectedAthlete(e.target.value)}
+            >
+              <option value="">Select Athlete</option>
+              {athletes.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.displayName}
+                </option>
+              ))}
+            </select>
 
-        {isCoach && (
-          <select
-            value={selectedAthlete}
-            onChange={e => setSelectedAthlete(e.target.value)}
+            <select
+              value={season}
+              onChange={e => setSeason(e.target.value)}
+            >
+              <option>Summer</option>
+              <option>Fall</option>
+              <option>Winter</option>
+              <option>Spring</option>
+            </select>
+
+            <input
+              type="number"
+              value={year}
+              onChange={e => setYear(e.target.value)}
+              placeholder="Year"
+            />
+
+            <input type="number" placeholder="Bench"
+              value={benchMax}
+              onChange={e => setBenchMax(e.target.value)}
+            />
+
+            <input type="number" placeholder="Squat"
+              value={squatMax}
+              onChange={e => setSquatMax(e.target.value)}
+            />
+
+            <input type="number" placeholder="Clean"
+              value={powerCleanMax}
+              onChange={e => setPowerCleanMax(e.target.value)}
+            />
+
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            Total: {totalPreview} lbs
+          </div>
+
+          <button onClick={handleSave} style={{ marginTop: 12 }}>
+            Save Snapshot
+          </button>
+
+          {/* 🔥 BULK TOOL */}
+          <hr style={{ margin: "30px 0" }} />
+
+          <h3>🚀 Bulk Historical Upload</h3>
+
+          <textarea
+            rows={8}
+            placeholder="Paste CSV here..."
+            value={bulkInput}
+            onChange={e => setBulkInput(e.target.value)}
+            style={{ width: "100%", marginTop: 10 }}
+          />
+
+          <button
+            onClick={handleBulkUpload}
+            disabled={bulkLoading}
+            style={{ marginTop: 10 }}
           >
-            <option value="">Select Athlete</option>
-            {athletes.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.displayName}
-              </option>
-            ))}
-          </select>
-        )}
+            {bulkLoading ? "Uploading..." : "Upload Bulk Data"}
+          </button>
 
-        <select
-          value={season}
-          onChange={e => setSeason(e.target.value)}
-        >
-          <option>Summer</option>
-          <option>Fall</option>
-          <option>Winter</option>
-          <option>Spring</option>
-        </select>
-
-        <input
-          type="number"
-          placeholder="Year"
-          value={year}
-          onChange={e => setYear(e.target.value)}
-        />
-
-        <input
-          type="number"
-          placeholder="Bench Max"
-          value={benchMax}
-          onChange={e => setBenchMax(e.target.value)}
-        />
-
-        <input
-          type="number"
-          placeholder="Squat Max"
-          value={squatMax}
-          onChange={e => setSquatMax(e.target.value)}
-        />
-
-        <input
-          type="number"
-          placeholder="Power Clean Max"
-          value={powerCleanMax}
-          onChange={e => setPowerCleanMax(e.target.value)}
-        />
-
-      </div>
-
-      <div style={{ marginTop: 12, fontWeight: 600 }}>
-        Total: {totalPreview} lbs
-      </div>
-
-      <button
-        onClick={handleSave}
-        style={{ marginTop: 15 }}
-      >
-        Save Snapshot
-      </button>
+          {bulkResult && (
+            <div style={{ marginTop: 10 }}>
+              {bulkResult}
+            </div>
+          )}
+        </>
+      )}
 
       <hr style={{ margin: "30px 0" }} />
 
-      {/* HISTORY */}
-
       <h3>📊 Historical Records</h3>
 
-      {filteredHistory.length === 0 && (
+      {history.length === 0 && (
         <div>No records found.</div>
       )}
 
       <div className="dashboard-grid">
-
-        {filteredHistory.map(h => (
+        {history.map(h => (
           <div key={h.id} className="card metric-card">
 
             <h4>{h.athleteName}</h4>
             <div>{h.season} {h.year}</div>
 
-            <div style={{ marginTop: 10 }}>
-              Bench: {h.benchMax} lbs
-            </div>
-            <div>Squat: {h.squatMax} lbs</div>
-            <div>Clean: {h.powerCleanMax} lbs</div>
+            <div>Bench: {h.benchMax}</div>
+            <div>Squat: {h.squatMax}</div>
+            <div>Clean: {h.powerCleanMax}</div>
 
-            <div
-              className="metric-value"
-              style={{ marginTop: 10 }}
-            >
-              Total: {h.total} lbs
+            <div className="metric-value">
+              Total: {h.total}
             </div>
 
             {isCoach && (
               <button
-                style={{
-                  marginTop: 12,
-                  background: "var(--danger)"
-                }}
+                style={{ marginTop: 10, background: "var(--danger)" }}
                 onClick={() => handleDelete(h.id)}
               >
                 Delete
@@ -289,7 +345,6 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
           </div>
         ))}
-
       </div>
 
     </div>
