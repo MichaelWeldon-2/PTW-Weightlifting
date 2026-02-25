@@ -6,7 +6,6 @@ import {
   onSnapshot,
   serverTimestamp,
   getDoc,
-  getDocs,
   doc,
   query,
   where,
@@ -19,9 +18,9 @@ import { calculateSets } from "../utils/calculateSets";
 
 export default function Workouts({ profile, team }) {
 
-  const [athletes, setAthletes] = useState([]);
-  const [selectedAthlete, setSelectedAthlete] = useState("");
-  const [maxLoaded, setMaxLoaded] = useState(false);
+  const [roster, setRoster] = useState([]);
+  const [selectedRosterId, setSelectedRosterId] = useState("");
+  const [liveMaxes, setLiveMaxes] = useState({});
   const [lastWorkout, setLastWorkout] = useState(null);
 
   const [exercise, setExercise] = useState("Bench");
@@ -30,38 +29,10 @@ export default function Workouts({ profile, team }) {
   const [result, setResult] = useState("Pass");
   const [overrideReason, setOverrideReason] = useState("");
 
-  const [maxes, setMaxes] = useState({});
-  const [successFlash, setSuccessFlash] = useState(false);
   const [teamTemplate, setTeamTemplate] = useState(defaultTemplate);
+  const [successFlash, setSuccessFlash] = useState(false);
 
   const isCoach = profile?.role === "coach";
-
-  /* ================= LOAD TEMPLATE ================= */
-
-  useEffect(() => {
-    if (!team?.id) return;
-
-    const loadTemplate = async () => {
-      try {
-        const snap = await getDoc(doc(db, "teamTemplates", team.id));
-        const firestoreTemplate = snap.data()?.template;
-
-        if (
-          firestoreTemplate &&
-          typeof firestoreTemplate === "object" &&
-          Object.keys(firestoreTemplate).length > 0
-        ) {
-          setTeamTemplate(firestoreTemplate);
-        } else {
-          setTeamTemplate(defaultTemplate);
-        }
-      } catch {
-        setTeamTemplate(defaultTemplate);
-      }
-    };
-
-    loadTemplate();
-  }, [team?.id]);
 
   /* ================= LOAD ROSTER ================= */
 
@@ -75,96 +46,89 @@ export default function Workouts({ profile, team }) {
         id: d.id,
         ...d.data()
       }));
-      setAthletes(list);
+      setRoster(list);
     });
 
     return () => unsub();
   }, [team?.id]);
 
-  /* ================= DETERMINE ROSTER ID ================= */
+  /* ================= AUTO SELECT SELF ================= */
 
-  const athleteRosterId = useMemo(() => {
-    if (isCoach) return selectedAthlete;
+  useEffect(() => {
+    if (!profile || isCoach) return;
 
-    const match = athletes.find(
-      a => a.linkedUid === profile?.uid
-    );
+    const match = roster.find(r => r.linkedUid === profile.uid);
+    if (match) setSelectedRosterId(match.id);
+  }, [profile, roster, isCoach]);
 
-    return match?.id || null;
-  }, [isCoach, selectedAthlete, athletes, profile?.uid]);
+  /* ================= LOAD TEMPLATE ================= */
 
-  const athleteDisplayName = useMemo(() => {
-    if (isCoach) {
-      return athletes.find(a => a.id === selectedAthlete)?.displayName || "";
-    }
-    return profile?.displayName || "";
-  }, [isCoach, selectedAthlete, athletes, profile?.displayName]);
+  useEffect(() => {
+    if (!team?.id) return;
+
+    const loadTemplate = async () => {
+      const snap = await getDoc(doc(db, "teamTemplates", team.id));
+      const t = snap.data()?.template;
+      setTeamTemplate(t && Object.keys(t).length ? t : defaultTemplate);
+    };
+
+    loadTemplate();
+  }, [team?.id]);
 
   /* ================= LOAD LIVE MAXES ================= */
 
   useEffect(() => {
-    if (!athleteRosterId) return;
-
-    setMaxLoaded(false);
+    if (!selectedRosterId) return;
 
     const loadMaxes = async () => {
-      try {
-        const snap = await getDoc(
-          doc(db, "seasonMaxesCurrent", athleteRosterId)
-        );
-
-        setMaxes(snap.exists() ? snap.data() : {});
-      } catch {
-        setMaxes({});
-      }
-
-      setMaxLoaded(true);
+      const snap = await getDoc(
+        doc(db, "seasonMaxesCurrent", selectedRosterId)
+      );
+      setLiveMaxes(snap.exists() ? snap.data() : {});
     };
 
     loadMaxes();
-  }, [athleteRosterId]);
+  }, [selectedRosterId]);
 
   /* ================= LOAD LAST WORKOUT ================= */
 
   useEffect(() => {
-    if (!athleteRosterId || !team?.id) return;
+    if (!selectedRosterId) return;
 
-    const loadLastWorkout = async () => {
-      const q = query(
-        collection(db, "workouts"),
-        where("teamId", "==", team.id),
-        where("athleteRosterId", "==", athleteRosterId),
-        orderBy("createdAt", "desc"),
-        limit(1)
-      );
+    const q = query(
+      collection(db, "workouts"),
+      where("athleteRosterId", "==", selectedRosterId),
+      orderBy("createdAt", "desc"),
+      limit(1)
+    );
 
-      const snap = await getDocs(q);
-
+    const unsub = onSnapshot(q, snap => {
       if (!snap.empty) {
         setLastWorkout(snap.docs[0].data());
-      } else {
-        setLastWorkout(null);
       }
-    };
+    });
 
-    loadLastWorkout();
-  }, [athleteRosterId, team?.id]);
+    return () => unsub();
+  }, [selectedRosterId]);
+
+  /* ================= TOTAL ================= */
+
+  const total =
+    (liveMaxes.benchMax || 0) +
+    (liveMaxes.squatMax || 0) +
+    (liveMaxes.powerCleanMax || 0);
 
   /* ================= CURRENT MAX ================= */
 
-  const currentMax = useMemo(() => {
-    return {
-      Bench: maxes?.benchMax || 0,
-      Squat: maxes?.squatMax || 0,
-      PowerClean: maxes?.powerCleanMax || 0
-    }[exercise] || 0;
-  }, [maxes, exercise]);
+  const currentMax = {
+    Bench: liveMaxes?.benchMax || 0,
+    Squat: liveMaxes?.squatMax || 0,
+    PowerClean: liveMaxes?.powerCleanMax || 0
+  }[exercise] || 0;
 
   /* ================= CALCULATE SETS ================= */
 
   const calculatedSets = useMemo(() => {
-
-    if (!maxLoaded) return [];
 
     const baseWeight =
       exercise === "Squat" && selectionValue !== "Max"
@@ -173,147 +137,88 @@ export default function Workouts({ profile, team }) {
 
     let template;
 
-    if (selectionValue === "Max") {
-      template = teamTemplate?.Max;
-    } else if (exercise === "Squat") {
-      template = teamTemplate?.Percentage;
-    } else {
-      template = teamTemplate?.[`Box${selectionValue}`];
-    }
+    if (selectionValue === "Max") template = teamTemplate?.Max;
+    else if (exercise === "Squat") template = teamTemplate?.Percentage;
+    else template = teamTemplate?.[`Box${selectionValue}`];
 
     if (!Array.isArray(template)) return [];
 
     return calculateSets(template, baseWeight);
 
-  }, [
-    exercise,
-    selectionValue,
-    selectedWeight,
-    currentMax,
-    teamTemplate,
-    maxLoaded
-  ]);
+  }, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
 
-  /* ================= SAVE WORKOUT ================= */
+  /* ================= SAVE ================= */
 
   const saveWorkout = async () => {
+    if (!selectedRosterId) return alert("Select athlete.");
 
-    if (!team?.id) return alert("Team not loaded.");
-    if (!athleteRosterId) return alert("Select athlete.");
+    await addDoc(collection(db, "workouts"), {
+      teamId: team.id,
+      athleteRosterId: selectedRosterId,
+      athleteDisplayName: roster.find(r => r.id === selectedRosterId)?.displayName,
+      exercise,
+      weight: Number(selectedWeight),
+      selectionValue,
+      result,
+      overrideReason: result === "Override" ? overrideReason : null,
+      createdAt: serverTimestamp()
+    });
 
-    try {
-
-      await addDoc(collection(db, "workouts"), {
-        teamId: team.id,
-        athleteRosterId,
-        athleteDisplayName,
-        exercise,
-        weight: Number(selectedWeight),
-        selectionValue,
-        result,
-        overrideReason: result === "Override" ? overrideReason : null,
-        createdAt: serverTimestamp()
-      });
-
-      if (selectionValue === "Max" && result === "Pass") {
-
-        const fieldMap = {
-          Bench: "benchMax",
-          Squat: "squatMax",
-          PowerClean: "powerCleanMax"
-        };
-
-        const fieldName = fieldMap[exercise];
-
-        const maxRef = doc(
-          db,
-          "seasonMaxesCurrent",
-          athleteRosterId
-        );
-
-        const snap = await getDoc(maxRef);
-
-        const existing = snap.exists() ? snap.data() : {
-          benchMax: 0,
-          squatMax: 0,
-          powerCleanMax: 0
-        };
-
-        const updated = {
-          ...existing,
-          [fieldName]: Number(selectedWeight)
-        };
-
-        const total =
-          (updated.benchMax || 0) +
-          (updated.squatMax || 0) +
-          (updated.powerCleanMax || 0);
-
-        await setDoc(maxRef, {
-          athleteRosterId,
-          athleteDisplayName,
-          ...updated,
-          total,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      }
-
-      setSuccessFlash(true);
-      setTimeout(() => setSuccessFlash(false), 1000);
-      setOverrideReason("");
-
-    } catch (err) {
-      alert("SAVE FAILED: " + err.message);
-    }
+    setSuccessFlash(true);
+    setTimeout(() => setSuccessFlash(false), 1000);
+    setOverrideReason("");
   };
 
   /* ================= UI ================= */
 
+  const athleteName =
+    roster.find(r => r.id === selectedRosterId)?.displayName || "Workout";
+
   return (
     <div className="workout-wrapper">
+
+      {/* HERO SECTION */}
+      <div className="hero-header">
+        <div>
+          <h2>{athleteName}</h2>
+          <div style={{ opacity: 0.85 }}>
+            Current Total: <strong>{total} lbs</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* LAST WORKOUT CARD */}
+      {lastWorkout && (
+        <div className="card">
+          <h3>Last Workout</h3>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>
+            {lastWorkout.exercise}
+          </div>
+          <div>{lastWorkout.weight} lbs</div>
+          <div>Result: {lastWorkout.result}</div>
+        </div>
+      )}
+
+      {/* PRESCRIPTION CARD */}
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
 
-        {/* 🔥 LAST WORKOUT CARD */}
-        {lastWorkout && (
-          <div
-            className="card"
-            style={{
-              marginBottom: 20,
-              borderLeft: `6px solid ${
-                lastWorkout.result === "Pass" ? "green" : "red"
-              }`
-            }}
-          >
-            <h3>Last Session</h3>
-            <p><strong>Exercise:</strong> {lastWorkout.exercise}</p>
-            <p><strong>Weight:</strong> {lastWorkout.weight} lbs</p>
-            <p><strong>Result:</strong> {lastWorkout.result}</p>
-          </div>
-        )}
-
-        <h2>Log Workout</h2>
+        <h3>Today's Prescription</h3>
 
         {isCoach && (
           <select
-            value={selectedAthlete}
-            onChange={e => setSelectedAthlete(e.target.value)}
+            value={selectedRosterId}
+            onChange={e => setSelectedRosterId(e.target.value)}
           >
             <option value="">Select Athlete</option>
-            {athletes.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.displayName}
+            {roster.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.displayName}
               </option>
             ))}
           </select>
         )}
 
-        <select
-          value={exercise}
-          onChange={e => {
-            setExercise(e.target.value);
-            setSelectionValue(e.target.value === "Squat" ? "25" : "1");
-          }}
-        >
+        <select value={exercise} onChange={e => setExercise(e.target.value)}>
           <option>Bench</option>
           <option>Squat</option>
           <option>PowerClean</option>
@@ -329,41 +234,33 @@ export default function Workouts({ profile, team }) {
           <option value="Max">Max</option>
         </select>
 
-        <select
-          value={selectedWeight}
-          onChange={e => setSelectedWeight(Number(e.target.value))}
-        >
-          {Array.from({ length: 59 }, (_, i) => 135 + i * 5).map(w => (
-            <option key={w} value={w}>{w} lbs</option>
-          ))}
-        </select>
-
-        <div style={{ marginTop: 15 }}>
-          {calculatedSets.map((set, index) => (
-            <div key={index}>
-              Set {index + 1}: {set.reps} reps x {set.weight} lbs
+        {/* AUTO RENDERED SETS */}
+        <div style={{ marginTop: 20 }}>
+          {calculatedSets.map((set, i) => (
+            <div key={i} style={{ padding: "6px 0" }}>
+              <strong>Set {i+1}</strong>: {set.reps} reps × {set.weight} lbs
             </div>
           ))}
         </div>
 
-        <select
-          value={result}
-          onChange={e => setResult(e.target.value)}
-        >
-          <option>Pass</option>
-          <option>Fail</option>
-          <option>Override</option>
-        </select>
+        {/* RESULT SECTION */}
+        <div style={{ marginTop: 20 }}>
+          <select value={result} onChange={e => setResult(e.target.value)}>
+            <option>Pass</option>
+            <option>Fail</option>
+            <option>Override</option>
+          </select>
 
-        {result === "Override" && (
-          <input
-            value={overrideReason}
-            onChange={e => setOverrideReason(e.target.value)}
-            placeholder="Reason"
-          />
-        )}
+          {result === "Override" && (
+            <input
+              value={overrideReason}
+              onChange={e => setOverrideReason(e.target.value)}
+              placeholder="Reason"
+            />
+          )}
+        </div>
 
-        <button onClick={saveWorkout}>
+        <button style={{ marginTop: 15 }} onClick={saveWorkout}>
           Save Workout
         </button>
 

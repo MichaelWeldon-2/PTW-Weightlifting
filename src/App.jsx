@@ -78,14 +78,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
+  const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
   const [roleChoice, setRoleChoice] = useState("athlete");
   const [inviteCode, setInviteCode] = useState("");
-
+  useEffect(() => {document.documentElement.setAttribute("data-theme", theme);localStorage.setItem("theme", theme);}, [theme]);
   const setActiveTabAndClose = (tab) => {
     setActiveTab(tab);
     setIsDrawerOpen(false);
@@ -324,105 +324,126 @@ export default function App() {
 
   /* ================= MAIN APP ================= */
 
-  return (
-    <div className="app">
+ return (
+  <div className="app">
 
-      <div className="sidebar">
-        <h3 style={{ marginBottom: 20 }}>PTW</h3>
+    {/* ================= SIDEBAR (DESKTOP) ================= */}
+    <div className="sidebar">
+      <h3 style={{ marginBottom: 20 }}>PTW</h3>
 
-        <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
-        <SidebarItem label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
-        <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
-        <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
+      <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+      <SidebarItem label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+      <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+      <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
 
-        {profile.role === "coach" && (
-          <>
-            <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
-            <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
-            <SidebarItem label="Program Builder" active={activeTab==="program"} onClick={()=>setActiveTab("program")} />
-            <SidebarItem label="Historical Max Entry" active={activeTab==="preseason"} onClick={()=>setActiveTab("preseason")} />
-            <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
-            <SidebarItem label="Roster" active={activeTab==="roster"} onClick={()=>setActiveTab("roster")} />
-            <SidebarItem label="Team Settings" active={activeTab==="settings"} onClick={()=>setActiveTab("settings")} />
-          </>
-        )}
-
-        <SidebarItem label="Annual Planner" active={activeTab==="planner"} onClick={()=>setActiveTab("planner")} />
-        <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
-      </div>
-
-      <div className="content">
-
-        <div className="mobile-header">
-          <div className="mobile-title">PTW</div>
-          <button className="hamburger-btn" onClick={()=>setIsDrawerOpen(true)}>☰</button>
-        </div>
-
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab + activeTeam?.id}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.25 }}
-          >
-
-            {activeTab === "dashboard" && <Dashboard profile={profile} team={activeTeam} />}
-            {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
-            {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
-            {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
-            {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
-            {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
-            {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
-            {activeTab === "preseason" && profile.role==="coach" && <HistoricalMaxEntry team={activeTeam} profile={profile} />}
-            {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
-            {activeTab === "roster" && profile.role==="coach" && <Roster team={activeTeam} />}
-            {activeTab === "settings" && profile.role==="coach" && <TeamSettings team={activeTeam} profile={profile} />}
-            {activeTab === "planner" && profile.role==="coach" && <AnnualPlanner team={activeTeam} />}
-            {activeTab === "account" && <Account profile={profile} />}
-
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      <div className="bottom-nav">
-        <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
-        <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
-        <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
-        {profile.role === "coach" && (
-          <NavItem icon="🧠" label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
-        )}
-        <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
-      </div>
-
-      {isDrawerOpen && (
-        <div className="drawer-overlay" onClick={()=>setIsDrawerOpen(false)}>
-          <div className="drawer" onClick={(e)=>e.stopPropagation()}>
-            <h3>Menu</h3>
-
-            <DrawerItem label="Dashboard" onClick={()=>setActiveTabAndClose("dashboard")} />
-            <DrawerItem label="Workouts" onClick={()=>setActiveTabAndClose("workouts")} />
-            <DrawerItem label="Progress" onClick={()=>setActiveTabAndClose("progress")} />
-            <DrawerItem label="Leaderboard" onClick={()=>setActiveTabAndClose("leaderboard")} />
-
-            {profile.role === "coach" && (
-              <>
-                <DrawerItem label="Coach" onClick={()=>setActiveTabAndClose("coach")} />
-                <DrawerItem label="Analytics" onClick={()=>setActiveTabAndClose("deep")} />
-                <DrawerItem label="Program Builder" onClick={()=>setActiveTabAndClose("program")} />
-                <DrawerItem label="Historical Max Entry" onClick={()=>setActiveTabAndClose("preseason")} />
-                <DrawerItem label="Create Team" onClick={()=>setActiveTabAndClose("createTeam")} />
-                <DrawerItem label="Roster" onClick={()=>setActiveTabAndClose("roster")} />
-                <DrawerItem label="Team Settings" onClick={()=>setActiveTabAndClose("settings")} />
-                <DrawerItem label="Annual Planner" onClick={()=>setActiveTabAndClose("planner")} />
-              </>
-            )}
-
-            <DrawerItem label="Account" onClick={()=>setActiveTabAndClose("account")} />
-          </div>
-        </div>
+      {profile.role === "coach" && (
+        <>
+          <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
+          <SidebarItem label="Analytics" active={activeTab==="deep"} onClick={()=>setActiveTab("deep")} />
+          <SidebarItem label="Program Builder" active={activeTab==="program"} onClick={()=>setActiveTab("program")} />
+          <SidebarItem label="Historical Max Entry" active={activeTab==="preseason"} onClick={()=>setActiveTab("preseason")} />
+          <SidebarItem label="Create Team" active={activeTab==="createTeam"} onClick={()=>setActiveTab("createTeam")} />
+          <SidebarItem label="Roster" active={activeTab==="roster"} onClick={()=>setActiveTab("roster")} />
+          <SidebarItem label="Team Settings" active={activeTab==="settings"} onClick={()=>setActiveTab("settings")} />
+        </>
       )}
 
+      <SidebarItem label="Annual Planner" active={activeTab==="planner"} onClick={()=>setActiveTab("planner")} />
+      <SidebarItem label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
+
+      {/* 🌙 DARK MODE TOGGLE */}
+      <SidebarItem
+        label={theme === "dark" ? "☀ Light Mode" : "🌙 Dark Mode"}
+        active={false}
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      />
     </div>
-  );
+
+    {/* ================= CONTENT ================= */}
+    <div className="content">
+
+      <div className="mobile-header">
+        <div className="mobile-title">PTW</div>
+        <button className="hamburger-btn" onClick={()=>setIsDrawerOpen(true)}>☰</button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab + activeTeam?.id}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.25 }}
+        >
+
+          {activeTab === "dashboard" && <Dashboard profile={profile} team={activeTeam} />}
+          {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
+          {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
+          {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
+          {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
+          {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
+          {activeTab === "program" && profile.role==="coach" && <ProgramBuilder team={activeTeam} />}
+          {activeTab === "preseason" && profile.role==="coach" && <HistoricalMaxEntry team={activeTeam} profile={profile} />}
+          {activeTab === "createTeam" && profile.role==="coach" && <CreateTeam profile={profile} />}
+          {activeTab === "roster" && profile.role==="coach" && <Roster team={activeTeam} />}
+          {activeTab === "settings" && profile.role==="coach" && <TeamSettings team={activeTeam} profile={profile} />}
+          {activeTab === "planner" && profile.role==="coach" && <AnnualPlanner team={activeTeam} />}
+          {activeTab === "account" && <Account profile={profile} />}
+
+        </motion.div>
+      </AnimatePresence>
+    </div>
+
+    {/* ================= BOTTOM NAV ================= */}
+    <div className="bottom-nav">
+      <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
+      <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+      <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+      {profile.role === "coach" && (
+        <NavItem icon="🧠" label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
+      )}
+      <NavItem icon="👤" label="Account" active={activeTab==="account"} onClick={()=>setActiveTab("account")} />
+    </div>
+
+    {/* ================= MOBILE DRAWER ================= */}
+    {isDrawerOpen && (
+      <div className="drawer-overlay" onClick={()=>setIsDrawerOpen(false)}>
+        <div className="drawer" onClick={(e)=>e.stopPropagation()}>
+          <h3>Menu</h3>
+
+          <DrawerItem label="Dashboard" onClick={()=>setActiveTabAndClose("dashboard")} />
+          <DrawerItem label="Workouts" onClick={()=>setActiveTabAndClose("workouts")} />
+          <DrawerItem label="Progress" onClick={()=>setActiveTabAndClose("progress")} />
+          <DrawerItem label="Leaderboard" onClick={()=>setActiveTabAndClose("leaderboard")} />
+
+          {profile.role === "coach" && (
+            <>
+              <DrawerItem label="Coach" onClick={()=>setActiveTabAndClose("coach")} />
+              <DrawerItem label="Analytics" onClick={()=>setActiveTabAndClose("deep")} />
+              <DrawerItem label="Program Builder" onClick={()=>setActiveTabAndClose("program")} />
+              <DrawerItem label="Historical Max Entry" onClick={()=>setActiveTabAndClose("preseason")} />
+              <DrawerItem label="Create Team" onClick={()=>setActiveTabAndClose("createTeam")} />
+              <DrawerItem label="Roster" onClick={()=>setActiveTabAndClose("roster")} />
+              <DrawerItem label="Team Settings" onClick={()=>setActiveTabAndClose("settings")} />
+              <DrawerItem label="Annual Planner" onClick={()=>setActiveTabAndClose("planner")} />
+            </>
+          )}
+
+          <DrawerItem label="Account" onClick={()=>setActiveTabAndClose("account")} />
+
+          {/* 🌙 DARK MODE TOGGLE (MOBILE) */}
+          <DrawerItem
+            label={theme === "dark" ? "☀ Light Mode" : "🌙 Dark Mode"}
+            onClick={() => {
+              setTheme(theme === "dark" ? "light" : "dark");
+              setIsDrawerOpen(false);
+            }}
+          />
+
+        </div>
+      </div>
+    )}
+
+  </div>
+);
 }

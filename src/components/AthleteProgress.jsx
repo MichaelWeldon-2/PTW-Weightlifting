@@ -29,60 +29,59 @@ const seasonOrder = {
 
 export default function AthleteProgress({ profile, team }) {
 
-  const [athletes, setAthletes] = useState([]);
-  const [selectedAthlete, setSelectedAthlete] = useState("");
+  const [roster, setRoster] = useState([]);
+  const [selectedRosterId, setSelectedRosterId] = useState("");
   const [liveMaxes, setLiveMaxes] = useState(null);
   const [historicalMaxes, setHistoricalMaxes] = useState([]);
 
-  /* ================= LOAD TEAM ATHLETES ================= */
+  const isCoach = profile?.role === "coach";
+
+  /* ================= LOAD ROSTER ================= */
 
   useEffect(() => {
-    if (!team?.members?.length) return;
+    if (!team?.id) return;
 
-    const q = query(
-      collection(db, "users"),
-      where("__name__", "in", team.members.slice(0, 10))
-    );
+    const rosterRef = collection(db, "athletes", team.id, "roster");
 
-    const unsub = onSnapshot(q, snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(u => u.role === "athlete");
-
-      setAthletes(list);
+    const unsub = onSnapshot(rosterRef, snap => {
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setRoster(list);
     });
 
     return () => unsub();
-  }, [team?.members]);
+  }, [team?.id]);
 
   /* ================= AUTO SELECT SELF ================= */
 
   useEffect(() => {
-    if (profile?.role === "athlete") {
-      setSelectedAthlete(profile.uid);
-    }
-  }, [profile]);
+    if (!profile || isCoach) return;
+
+    const match = roster.find(r => r.linkedUid === profile.uid);
+    if (match) setSelectedRosterId(match.id);
+  }, [profile, roster, isCoach]);
 
   /* ================= LOAD LIVE MAXES ================= */
 
   useEffect(() => {
-    if (!selectedAthlete) return;
+    if (!selectedRosterId) return;
 
     const loadLive = async () => {
       const snap = await getDoc(
-        doc(db, "seasonMaxesCurrent", selectedAthlete)
+        doc(db, "seasonMaxesCurrent", selectedRosterId)
       );
-
       setLiveMaxes(snap.exists() ? snap.data() : null);
     };
 
     loadLive();
-  }, [selectedAthlete]);
+  }, [selectedRosterId]);
 
   /* ================= LOAD HISTORICAL SNAPSHOTS ================= */
 
   useEffect(() => {
-    if (!team?.id || !selectedAthlete) return;
+    if (!team?.id || !selectedRosterId) return;
 
     const loadHistory = async () => {
       const ref = collection(db, "seasonMaxes", team.id, "athletes");
@@ -108,7 +107,7 @@ export default function AthleteProgress({ profile, team }) {
     };
 
     loadHistory();
-  }, [team?.id, selectedAthlete]);
+  }, [team?.id, selectedRosterId]);
 
   /* ================= CURRENT TOTAL ================= */
 
@@ -121,7 +120,7 @@ export default function AthleteProgress({ profile, team }) {
     );
   }, [liveMaxes]);
 
-  /* ================= SORTED HISTORY ================= */
+  /* ================= SORT HISTORY ================= */
 
   const sortedHistory = useMemo(() => {
     if (!historicalMaxes.length) return [];
@@ -147,7 +146,7 @@ export default function AthleteProgress({ profile, team }) {
     );
   }, [sortedHistory, currentTotal]);
 
-  /* ================= BIGGEST OFFSEASON GAIN ================= */
+  /* ================= BIGGEST GAIN ================= */
 
   const biggestGain = useMemo(() => {
     if (sortedHistory.length < 2) return null;
@@ -199,6 +198,9 @@ export default function AthleteProgress({ profile, team }) {
         )
       : null;
 
+  const athleteName =
+    roster.find(r => r.id === selectedRosterId)?.displayName || "";
+
   /* ================= UI ================= */
 
   return (
@@ -206,15 +208,15 @@ export default function AthleteProgress({ profile, team }) {
 
       <h2>📈 Athlete Performance Center</h2>
 
-      {profile?.role === "coach" && (
+      {isCoach && (
         <select
-          value={selectedAthlete}
-          onChange={e => setSelectedAthlete(e.target.value)}
+          value={selectedRosterId}
+          onChange={e => setSelectedRosterId(e.target.value)}
         >
           <option value="">Select Athlete</option>
-          {athletes.map(a => (
-            <option key={a.id} value={a.id}>
-              {a.displayName}
+          {roster.map(r => (
+            <option key={r.id} value={r.id}>
+              {r.displayName}
             </option>
           ))}
         </select>
@@ -256,7 +258,7 @@ export default function AthleteProgress({ profile, team }) {
 
       <hr />
 
-      {/* HISTORICAL CHART */}
+      {/* CHART */}
       {chartData.length === 0 && (
         <div>No historical season data yet.</div>
       )}
@@ -305,7 +307,7 @@ export default function AthleteProgress({ profile, team }) {
   );
 }
 
-/* ================= METRIC CARD ================= */
+/* ================= METRIC ================= */
 
 function Metric({ label, value }) {
   return (
