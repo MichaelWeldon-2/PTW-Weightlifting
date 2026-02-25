@@ -1,12 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import {
-  doc,
-  getDoc,
   collection,
   query,
   where,
-  onSnapshot,
-  documentId
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -16,27 +13,27 @@ export default function AthleteDeepDive({ team }) {
   const [selected, setSelected] = useState("");
   const [workouts, setWorkouts] = useState([]);
 
- /* ================= LOAD ROSTER ================= */
+  /* ================= LOAD ROSTER ================= */
 
-useEffect(() => {
-  if (!team?.id) {
-    setAthletes([]);
-    return;
-  }
+  useEffect(() => {
+    if (!team?.id) {
+      setAthletes([]);
+      return;
+    }
 
-  const rosterRef = collection(db, "athletes", team.id, "roster");
+    const rosterRef = collection(db, "athletes", team.id, "roster");
 
-  const unsub = onSnapshot(rosterRef, snap => {
-    const list = snap.docs.map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
+    const unsub = onSnapshot(rosterRef, snap => {
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setAthletes(list);
+    });
 
-    setAthletes(list);
-  });
+    return () => unsub();
+  }, [team?.id]);
 
-  return () => unsub();
-}, [team?.id]);
   /* ================= LOAD WORKOUTS ================= */
 
   useEffect(() => {
@@ -49,23 +46,25 @@ useEffect(() => {
     const q = query(
       collection(db, "workouts"),
       where("teamId", "==", team.id),
-     where("athleteRosterId", "==", selected)
+      where("athleteRosterId", "==", selected)
     );
 
     const unsub = onSnapshot(q, snap => {
-      setWorkouts(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
+      const sorted = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) =>
+          (a.createdAt?.seconds || 0) -
+          (b.createdAt?.seconds || 0)
+        );
+
+      setWorkouts(sorted);
     });
 
     return () => unsub();
 
-  }, [selected, team]);
+  }, [selected, team?.id]);
 
-  /* ================= ANALYTICS ENGINE (UNCHANGED) ================= */
+  /* ================= ANALYTICS ================= */
 
   const analytics = useMemo(() => {
 
@@ -85,17 +84,13 @@ useEffect(() => {
       };
     }
 
-    const sorted = [...workouts]
-      .filter(w => w.createdAt?.seconds)
-      .sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
-
     let totalPass = 0;
     let totalAttempts = 0;
     let totalVolume = 0;
 
     const liftMap = {};
 
-    sorted.forEach(w => {
+    workouts.forEach(w => {
 
       const weight = Number(w.weight) || 0;
 
@@ -103,9 +98,8 @@ useEffect(() => {
       totalVolume += weight;
       if (w.result === "Pass") totalPass++;
 
-      if (!liftMap[w.exercise]) {
+      if (!liftMap[w.exercise])
         liftMap[w.exercise] = [];
-      }
 
       liftMap[w.exercise].push(weight);
     });
@@ -127,32 +121,23 @@ useEffect(() => {
         const last6 = weights.slice(-6);
         const max = Math.max(...last6);
         const min = Math.min(...last6);
-
-        if (max - min <= 5) {
-          plateaus.push(exercise);
-        }
+        if (max - min <= 5) plateaus.push(exercise);
       }
     });
 
     let fatigue = false;
 
-    if (sorted.length >= 10) {
-
-      const volumes = sorted.map(w => Number(w.weight) || 0);
-
+    if (workouts.length >= 10) {
+      const volumes = workouts.map(w => Number(w.weight) || 0);
       const last5 = volumes.slice(-5).reduce((s,v)=>s+v,0);
       const prev5 = volumes.slice(-10,-5).reduce((s,v)=>s+v,0);
-
-      if (prev5 > 0 && last5 > prev5 * 1.3) {
+      if (prev5 > 0 && last5 > prev5 * 1.3)
         fatigue = true;
-      }
     }
 
     let riskScore = 0;
-
     if (failRate >= 0.5) riskScore += 2;
     else if (failRate >= 0.3) riskScore += 1;
-
     if (fatigue) riskScore += 1;
     if (plateaus.length > 0) riskScore += 1;
 
@@ -161,81 +146,59 @@ useEffect(() => {
     else if (riskScore === 2) riskLevel = "Warning";
 
     const insights = [];
-
     if (plateaus.length)
       insights.push(`Plateau detected in: ${plateaus.join(", ")}`);
-
     if (fatigue)
       insights.push("Volume spike detected — monitor fatigue");
-
     if (failRate >= 0.5)
       insights.push("High fail rate — reduce load");
-
     if (passRate >= 80)
       insights.push("Strong performance — increase intensity");
 
     const recommendations = [];
-
     if (riskLevel === "Critical")
       recommendations.push("Deload 10% next session");
-
     if (riskLevel === "Warning")
       recommendations.push("Reduce load by 5% next session");
-
     if (plateaus.length > 0)
       recommendations.push("Change stimulus (tempo, pause, or volume)");
-
     if (fatigue)
       recommendations.push("Insert recovery / light day");
-
     if (passRate >= 85 && !fatigue && plateaus.length === 0)
       recommendations.push("Increase load 2.5–5% next week");
 
     const recommendedLoads = {};
 
     Object.entries(liftMap).forEach(([exercise, weights]) => {
-
-      if (!weights.length) return;
-
       const lastWeight = weights[weights.length - 1];
       let nextWeight = lastWeight;
 
-      if (riskLevel === "Critical") {
+      if (riskLevel === "Critical")
         nextWeight = Math.round(lastWeight * 0.9 / 5) * 5;
-      }
-      else if (riskLevel === "Warning") {
+      else if (riskLevel === "Warning")
         nextWeight = Math.round(lastWeight * 0.95 / 5) * 5;
-      }
-      else if (passRate >= 85 && !fatigue && !plateaus.includes(exercise)) {
+      else if (passRate >= 85 && !fatigue && !plateaus.includes(exercise))
         nextWeight = Math.round(lastWeight * 1.03 / 5) * 5;
-      }
 
       recommendedLoads[exercise] = nextWeight;
     });
 
     let performanceScore = 100;
-
     performanceScore -= failRate * 40;
     if (fatigue) performanceScore -= 10;
     if (plateaus.length > 0) performanceScore -= 10;
     if (passRate >= 85) performanceScore += 5;
-
     performanceScore = Math.max(0, Math.min(100, Math.round(performanceScore)));
 
     let momentum = 0;
-
     Object.values(liftMap).forEach(weights => {
-      if (weights.length >= 2) {
-        const last = weights[weights.length - 1];
-        const prev = weights[weights.length - 2];
-        momentum += (last - prev);
-      }
+      if (weights.length >= 2)
+        momentum += weights[weights.length - 1] - weights[weights.length - 2];
     });
 
     momentum = Math.round(momentum);
 
     let grade = "C";
-
     if (performanceScore >= 90) grade = "A+";
     else if (performanceScore >= 85) grade = "A";
     else if (performanceScore >= 75) grade = "B";
@@ -258,8 +221,6 @@ useEffect(() => {
     };
 
   }, [workouts]);
-
-  /* ================= UI ================= */
 
   return (
     <div className="card">
@@ -292,10 +253,8 @@ useEffect(() => {
 
           <h3>🎯 Performance Grade</h3>
           <div className={`recommendation-box grade-${analytics.grade.replace("+","plus").toLowerCase()}`}>
-            Grade: {analytics.grade}
-            <br />
-            Score: {analytics.performanceScore}/100
-            <br />
+            Grade: {analytics.grade}<br />
+            Score: {analytics.performanceScore}/100<br />
             Momentum: {analytics.momentum >= 0 ? "+" : ""}{analytics.momentum}
           </div>
 
