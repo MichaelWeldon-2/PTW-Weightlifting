@@ -11,7 +11,7 @@ import {
 import { db } from "../firebase";
 import { motion } from "framer-motion";
 import AnimatedStat from "./AnimatedStat";
-
+import { calculateTeamAnalytics } from "../utils/teamAnalytics";
 function Dashboard({ profile, team }) {
 
   /* ================= STATE ================= */
@@ -144,56 +144,8 @@ function Dashboard({ profile, team }) {
   /* ================= ANALYTICS ================= */
 
   const analytics = useMemo(() => {
-
-    if (!workouts.length)
-      return { topPerformer: null, mostImproved: null, totalVolume: 0 };
-
-    const grouped = {};
-    let totalVolume = 0;
-
-    workouts.forEach(w => {
-
-      const weight = Number(w.weight) || 0;
-      if (!weight) return;
-
-      totalVolume += weight;
-
-      const rosterEntry = roster.find(r => r.id === w.athleteRosterId);
-      const name =
-        rosterEntry?.displayName ||
-        w.athleteDisplayName ||
-        "Unknown";
-
-      if (!grouped[name])
-        grouped[name] = [];
-
-      grouped[name].push(weight);
-    });
-
-    const leaders = [];
-    const improvements = [];
-
-    Object.entries(grouped).forEach(([name, weights]) => {
-
-      if (!weights.length) return;
-
-      const max = Math.max(...weights);
-      const min = Math.min(...weights);
-
-      leaders.push({ name, max });
-      improvements.push({ name, improvement: max - min });
-    });
-
-    leaders.sort((a,b)=>b.max-a.max);
-    improvements.sort((a,b)=>b.improvement-a.improvement);
-
-    return {
-      topPerformer: leaders[0] || null,
-      mostImproved: improvements[0] || null,
-      totalVolume
-    };
-
-  }, [workouts, roster]);
+  return calculateTeamAnalytics(workouts, roster, 30);
+}, [workouts, roster]);
 
   /* ================= LOAD PROGRAM ================= */
 

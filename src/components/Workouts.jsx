@@ -6,6 +6,7 @@ import {
   serverTimestamp,
   getDoc,
   doc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -41,12 +42,11 @@ export default function Workouts({ profile, team }) {
     const rosterRef = collection(db, "athletes", team.id, "roster");
 
     const unsub = onSnapshot(rosterRef, snap => {
-      setRoster(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setRoster(list);
     });
 
     return () => unsub();
@@ -60,6 +60,28 @@ export default function Workouts({ profile, team }) {
     const match = roster.find(r => r.linkedUid === profile.uid);
     if (match) setSelectedRosterId(match.id);
   }, [profile, roster, isCoach]);
+
+  /* ================= LOAD NEXT SESSION FROM ROSTER ================= */
+
+  useEffect(() => {
+    if (!team?.id || !selectedRosterId) return;
+
+    const loadNextSession = async () => {
+      const snap = await getDoc(
+        doc(db, "athletes", team.id, "roster", selectedRosterId)
+      );
+
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+
+      if (data.nextExercise) setExercise(data.nextExercise);
+      if (data.nextBox) setSelectionValue(data.nextBox);
+      if (data.nextWeight) setSelectedWeight(data.nextWeight);
+    };
+
+    loadNextSession();
+  }, [team?.id, selectedRosterId]);
 
   /* ================= LOAD TEMPLATE ================= */
 
@@ -111,13 +133,6 @@ export default function Workouts({ profile, team }) {
     return () => unsub();
   }, [selectedRosterId]);
 
-  /* ================= TOTAL ================= */
-
-  const total =
-    (liveMaxes.benchMax || 0) +
-    (liveMaxes.squatMax || 0) +
-    (liveMaxes.powerCleanMax || 0);
-
   /* ================= CURRENT MAX ================= */
 
   const currentMax = {
@@ -126,7 +141,7 @@ export default function Workouts({ profile, team }) {
     PowerClean: liveMaxes?.powerCleanMax || 0
   }[exercise] || 0;
 
-  /* ================= CURRENT SETS ================= */
+  /* ================= CALCULATE SETS ================= */
 
   const calculatedSets = useMemo(() => {
 
@@ -147,44 +162,7 @@ export default function Workouts({ profile, team }) {
 
   }, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
 
-  /* ================= NEXT PROGRESSION ================= */
-
-  const nextValue = useMemo(() => {
-
-    if (selectionValue === "Max") return null;
-
-    if (exercise === "Squat") {
-      const nextPercent = Number(selectionValue) + 5;
-      return nextPercent <= 95 ? String(nextPercent) : "Max";
-    }
-
-    const nextBox = Number(selectionValue) + 1;
-    return nextBox <= 6 ? String(nextBox) : "Max";
-
-  }, [selectionValue, exercise]);
-
-  const nextSets = useMemo(() => {
-
-    if (!nextValue) return [];
-
-    const baseWeight =
-      exercise === "Squat" && nextValue !== "Max"
-        ? Math.round((Number(nextValue) / 100) * currentMax)
-        : selectedWeight;
-
-    let template;
-
-    if (nextValue === "Max") template = teamTemplate?.Max;
-    else if (exercise === "Squat") template = teamTemplate?.Percentage;
-    else template = teamTemplate?.[`Box${nextValue}`];
-
-    if (!Array.isArray(template)) return [];
-
-    return calculateSets(template, baseWeight);
-
-  }, [nextValue, exercise, currentMax, selectedWeight, teamTemplate]);
-
-  /* ================= SAVE ================= */
+  /* ================= SAVE WORKOUT ================= */
 
   const saveWorkout = async () => {
 
@@ -193,8 +171,7 @@ export default function Workouts({ profile, team }) {
     await addDoc(collection(db, "workouts"), {
       teamId: team.id,
       athleteRosterId: selectedRosterId,
-      athleteDisplayName:
-        roster.find(r => r.id === selectedRosterId)?.displayName,
+      athleteDisplayName: roster.find(r => r.id === selectedRosterId)?.displayName,
       exercise,
       weight: Number(selectedWeight),
       selectionValue,
@@ -203,10 +180,34 @@ export default function Workouts({ profile, team }) {
       createdAt: serverTimestamp()
     });
 
-    /* AUTO PROGRESSION */
-    if (result === "Pass" && nextValue) {
-      setSelectionValue(nextValue);
+    /* ================= CALCULATE NEXT SESSION ================= */
+
+    let nextBox = selectionValue;
+    let nextIsMax = false;
+
+    if (result === "Pass") {
+
+      if (selectionValue === "Max") {
+        nextBox = "1";
+      } else if (Number(selectionValue) >= 6) {
+        nextBox = "Max";
+        nextIsMax = true;
+      } else {
+        nextBox = String(Number(selectionValue) + 1);
+      }
+
     }
+
+    await setDoc(
+      doc(db, "athletes", team.id, "roster", selectedRosterId),
+      {
+        nextExercise: exercise,
+        nextBox,
+        nextWeight: Number(selectedWeight),
+        nextIsMax
+      },
+      { merge: true }
+    );
 
     setSuccessFlash(true);
     setTimeout(() => setSuccessFlash(false), 1000);
@@ -224,18 +225,13 @@ export default function Workouts({ profile, team }) {
       <div className="hero-header">
         <div>
           <h2>{athleteName}</h2>
-          <div style={{ opacity: 0.85 }}>
-            Current Total: <strong>{total} lbs</strong>
-          </div>
         </div>
       </div>
 
       {lastWorkout && (
         <div className="card">
           <h3>Last Workout</h3>
-          <div style={{ fontWeight: 600 }}>
-            {lastWorkout.exercise}
-          </div>
+          <div>{lastWorkout.exercise}</div>
           <div>{lastWorkout.weight} lbs</div>
           <div>Result: {lastWorkout.result}</div>
         </div>
@@ -269,16 +265,18 @@ export default function Workouts({ profile, team }) {
           value={selectionValue}
           onChange={e => setSelectionValue(e.target.value)}
         >
-          {exercise === "Squat"
-            ? Array.from({ length: 15 }, (_, i) => 25 + i * 5).map(p => (
-                <option key={p} value={p}>{p}%</option>
-              ))
-            : [1,2,3,4,5,6].map(b => (
-                <option key={b} value={b}>Box {b}</option>
-              ))
-          }
+          {[1,2,3,4,5,6].map(b => (
+            <option key={b} value={b}>Box {b}</option>
+          ))}
           <option value="Max">Max</option>
         </select>
+
+        {/* WEIGHT DROPDOWN RESTORED */}
+        <input
+          type="number"
+          value={selectedWeight}
+          onChange={e => setSelectedWeight(e.target.value)}
+        />
 
         <div style={{ marginTop: 20 }}>
           {calculatedSets.map((set, i) => (
@@ -287,17 +285,6 @@ export default function Workouts({ profile, team }) {
             </div>
           ))}
         </div>
-
-        {nextSets.length > 0 && (
-          <div className="card" style={{ marginTop: 20 }}>
-            <h3>Up Next</h3>
-            {nextSets.map((set, i) => (
-              <div key={i}>
-                <strong>Set {i+1}</strong>: {set.reps} reps × {set.weight} lbs
-              </div>
-            ))}
-          </div>
-        )}
 
         <div style={{ marginTop: 20 }}>
           <select value={result} onChange={e => setResult(e.target.value)}>
