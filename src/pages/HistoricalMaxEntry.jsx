@@ -6,7 +6,8 @@ import {
   deleteDoc,
   onSnapshot,
   serverTimestamp,
-  getDoc
+  getDoc,
+  getDocs
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -79,93 +80,152 @@ export default function HistoricalMaxEntry({ team, profile }) {
     );
   }, [benchMax, squatMax, powerCleanMax]);
 
-  /* ================= SAVE ================= */
+  /* ================= SEASON ORDER ================= */
 
-const seasonOrder = {
-  Summer: 1,
-  Fall: 2,
-  Winter: 3,
-  Spring: 4
-};
-
-const getTrainingYear = (season, year) => {
-  if (season === "Winter" || season === "Spring") {
-    return Number(year) - 1;
-  }
-  return Number(year);
-};
-
-const handleSave = async () => {
-
-  if (!isCoach) {
-    alert("Only coaches can add historical data.");
-    return;
-  }
-
-  if (!team?.id) {
-    alert("Team not loaded");
-    return;
-  }
-
-  if (!selectedAthlete) {
-    alert("Select athlete");
-    return;
-  }
-
-  const athlete = athletes.find(a => a.id === selectedAthlete);
-
-  const total =
-    (Number(benchMax) || 0) +
-    (Number(squatMax) || 0) +
-    (Number(powerCleanMax) || 0);
-
-  const trainingYear = getTrainingYear(season, year);
-  const seasonIndex = trainingYear * 10 + seasonOrder[season];
-
-  const snapshotId =
-    `${selectedAthlete}_${season}_${year}_${Date.now()}`;
-
-  const payload = {
-    athleteRosterId: selectedAthlete,
-    athleteName: athlete?.displayName || "Unknown",
-    season,
-    year: Number(year),
-    trainingYear,
-    seasonIndex,
-    benchMax: Number(benchMax) || 0,
-    squatMax: Number(squatMax) || 0,
-    powerCleanMax: Number(powerCleanMax) || 0,
-    total,
-    createdAt: serverTimestamp()
+  const seasonOrder = {
+    Summer: 1,
+    Fall: 2,
+    Winter: 3,
+    Spring: 4
   };
 
-  /* ================= SAVE TO HISTORY ================= */
-  await setDoc(
-    doc(db, "seasonMaxHistory", team.id, "athletes", snapshotId),
-    payload
-  );
+  const getTrainingYear = (season, year) => {
+    if (season === "Winter" || season === "Spring") {
+      return Number(year) - 1;
+    }
+    return Number(year);
+  };
 
-  /* ================= SAVE TO SEASON MAXES ================= */
-  await setDoc(
-    doc(db, "seasonMaxes", team.id, "athletes", snapshotId),
-    payload
-  );
+  /* ================= SAVE ================= */
 
-  /* ================= UPDATE CURRENT MAXES ================= */
-  const currentRef = doc(db, "seasonMaxesCurrent", selectedAthlete);
+  const handleSave = async () => {
 
-  const currentSnap = await getDoc(currentRef);
+    if (!isCoach) return alert("Only coaches can add historical data.");
+    if (!team?.id) return alert("Team not loaded");
+    if (!selectedAthlete) return alert("Select athlete");
 
-  if (!currentSnap.exists() || 
-      seasonIndex > (currentSnap.data()?.seasonIndex || 0)) {
+    const athlete = athletes.find(a => a.id === selectedAthlete);
 
-    await setDoc(currentRef, payload);
-  }
+    const total =
+      (Number(benchMax) || 0) +
+      (Number(squatMax) || 0) +
+      (Number(powerCleanMax) || 0);
 
-  setBenchMax("");
-  setSquatMax("");
-  setPowerCleanMax("");
-};
+    const trainingYear = getTrainingYear(season, year);
+    const seasonIndex = trainingYear * 10 + seasonOrder[season];
+
+    const snapshotId =
+      `${selectedAthlete}_${season}_${year}_${Date.now()}`;
+
+    const payload = {
+      athleteRosterId: selectedAthlete,
+      athleteDisplayName: athlete?.displayName || "Unknown",
+      season,
+      year: Number(year),
+      trainingYear,
+      seasonIndex,
+      benchMax: Number(benchMax) || 0,
+      squatMax: Number(squatMax) || 0,
+      powerCleanMax: Number(powerCleanMax) || 0,
+      total,
+      createdAt: serverTimestamp()
+    };
+
+    await setDoc(
+      doc(db, "seasonMaxHistory", team.id, "athletes", snapshotId),
+      payload
+    );
+
+    await setDoc(
+      doc(db, "seasonMaxes", team.id, "athletes", snapshotId),
+      payload
+    );
+
+    const currentRef = doc(db, "seasonMaxesCurrent", selectedAthlete);
+    const currentSnap = await getDoc(currentRef);
+
+    if (!currentSnap.exists() ||
+        seasonIndex > (currentSnap.data()?.seasonIndex || 0)) {
+      await setDoc(currentRef, payload);
+    }
+
+    setBenchMax("");
+    setSquatMax("");
+    setPowerCleanMax("");
+  };
+
+  /* ================= MIGRATION TOOL ================= */
+
+  const migrateHistoricalData = async () => {
+
+    if (!team?.id) return alert("Team not loaded.");
+
+    try {
+
+      const historyRef = collection(db, "seasonMaxHistory", team.id, "athletes");
+      const historySnap = await getDocs(historyRef);
+
+      if (historySnap.empty) {
+        alert("No historical records found.");
+        return;
+      }
+
+      const athleteLatestMap = {};
+      let migratedCount = 0;
+
+      for (const docSnap of historySnap.docs) {
+
+        const data = docSnap.data();
+
+        const trainingYear =
+          data.trainingYear ??
+          getTrainingYear(data.season, data.year);
+
+        const seasonIndex =
+          data.seasonIndex ??
+          trainingYear * 10 + seasonOrder[data.season];
+
+        const payload = {
+          ...data,
+          trainingYear,
+          seasonIndex
+        };
+
+        await setDoc(
+          doc(db, "seasonMaxes", team.id, "athletes", docSnap.id),
+          payload,
+          { merge: true }
+        );
+
+        const score = seasonIndex;
+
+        if (!athleteLatestMap[data.athleteRosterId] ||
+            score > athleteLatestMap[data.athleteRosterId].score) {
+
+          athleteLatestMap[data.athleteRosterId] = {
+            score,
+            data: payload
+          };
+        }
+
+        migratedCount++;
+      }
+
+      for (const athleteId in athleteLatestMap) {
+        await setDoc(
+          doc(db, "seasonMaxesCurrent", athleteId),
+          athleteLatestMap[athleteId].data,
+          { merge: true }
+        );
+      }
+
+      alert(`Migration complete. ${migratedCount} records processed.`);
+
+    } catch (err) {
+      console.error(err);
+      alert("Migration failed. Check console.");
+    }
+  };
 
   /* ================= BULK UPLOAD ================= */
 
@@ -205,16 +265,20 @@ const handleSave = async () => {
           (Number(squat) || 0) +
           (Number(clean) || 0);
 
+        const trainingYear = getTrainingYear(seasonVal, yearVal);
+        const seasonIndex = trainingYear * 10 + seasonOrder[seasonVal];
+
         const docId = `${rosterMatch.id}_${seasonVal}_${yearVal}`;
 
         await setDoc(
           doc(db, "seasonMaxes", team.id, "athletes", docId),
           {
-            teamId: team.id,
             athleteRosterId: rosterMatch.id,
             athleteDisplayName: rosterMatch.displayName,
             season: seasonVal,
             year: Number(yearVal),
+            trainingYear,
+            seasonIndex,
             benchMax: Number(bench) || 0,
             squatMax: Number(squat) || 0,
             powerCleanMax: Number(clean) || 0,
@@ -244,10 +308,7 @@ const handleSave = async () => {
 
   const handleDelete = async (id) => {
     if (!isCoach || !team?.id) return;
-
-    await deleteDoc(
-      doc(db, "seasonMaxes", team.id, "athletes", id)
-    );
+    await deleteDoc(doc(db, "seasonMaxes", team.id, "athletes", id));
   };
 
   /* ================= UI ================= */
@@ -340,6 +401,17 @@ const handleSave = async () => {
               {bulkResult}
             </div>
           )}
+
+          <hr style={{ margin: "30px 0" }} />
+
+          <h3>⚙ Data Migration</h3>
+
+          <button
+            onClick={migrateHistoricalData}
+            style={{ marginTop: 10 }}
+          >
+            Migrate Historical Data → Season Maxes
+          </button>
         </>
       )}
 
@@ -347,9 +419,7 @@ const handleSave = async () => {
 
       <h3>📊 Historical Records</h3>
 
-      {history.length === 0 && (
-        <div>No records found.</div>
-      )}
+      {history.length === 0 && <div>No records found.</div>}
 
       <div className="dashboard-grid">
         {history.map(h => (
