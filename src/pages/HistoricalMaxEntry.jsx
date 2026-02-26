@@ -154,37 +154,56 @@ export default function HistoricalMaxEntry({ team, profile }) {
     setPowerCleanMax("");
   };
 
-  /* ================= MIGRATION TOOL ================= */
+ /* ================= MIGRATION TOOL ================= */
 
 const migrateSeasonData = async () => {
+
   if (!team?.id) return;
   if (!isCoach) return alert("Coach only action.");
 
   const confirmRun = window.confirm(
-    "This will fix all season year + trainingYear + seasonIndex values. Continue?"
+    "This will fix season ordering AND rebuild current maxes. Continue?"
   );
 
   if (!confirmRun) return;
 
   try {
+
+    const seasonOrder = {
+      Summer: 1,
+      Fall: 2,
+      Winter: 3,
+      Spring: 4
+    };
+
+    const getTrainingYear = (season, year) => {
+      // Winter & Spring belong to previous Fall cycle
+      if (season === "Winter" || season === "Spring") {
+        return Number(year) - 1;
+      }
+      return Number(year);
+    };
+
+    /* ================= FIX SEASON INDEX VALUES ================= */
+
     const collectionsToFix = [
       { path: "seasonMaxes" },
       { path: "seasonMaxHistory" }
     ];
 
     for (const col of collectionsToFix) {
+
       const ref = collection(db, col.path, team.id, "athletes");
       const snap = await getDocs(ref);
 
       for (const docSnap of snap.docs) {
+
         const data = docSnap.data();
 
         if (!data.season || !data.year) continue;
 
-       const correctedTrainingYear =
-  data.season === "Winter" || data.season === "Spring"
-    ? Number(data.year) - 1
-    : Number(data.year);
+        const correctedTrainingYear =
+          getTrainingYear(data.season, data.year);
 
         const correctedSeasonIndex =
           correctedTrainingYear * 10 +
@@ -199,6 +218,35 @@ const migrateSeasonData = async () => {
           { merge: true }
         );
       }
+    }
+
+    /* ================= REBUILD seasonMaxesCurrent ================= */
+
+    const rosterRef = collection(db, "athletes", team.id, "roster");
+    const rosterSnap = await getDocs(rosterRef);
+
+    const seasonRef = collection(db, "seasonMaxes", team.id, "athletes");
+    const seasonSnap = await getDocs(seasonRef);
+
+    const allSeasonData = seasonSnap.docs.map(d => d.data());
+
+    for (const athleteDoc of rosterSnap.docs) {
+
+      const athleteId = athleteDoc.id;
+
+      const athleteSeasons = allSeasonData
+        .filter(d => d.athleteRosterId === athleteId);
+
+      if (!athleteSeasons.length) continue;
+
+      const latest = athleteSeasons.sort(
+        (a, b) => (a.seasonIndex || 0) - (b.seasonIndex || 0)
+      )[athleteSeasons.length - 1];
+
+      await setDoc(
+        doc(db, "seasonMaxesCurrent", athleteId),
+        latest
+      );
     }
 
     alert("Migration complete. Reload page.");
