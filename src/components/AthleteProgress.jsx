@@ -5,8 +5,7 @@ import {
   where,
   onSnapshot,
   doc,
-  getDoc,
-  getDocs
+  getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
 import {
@@ -31,7 +30,6 @@ export default function AthleteProgress({ profile, team }) {
 
   const [roster, setRoster] = useState([]);
   const [selectedRosterId, setSelectedRosterId] = useState("");
-  const [liveMaxes, setLiveMaxes] = useState(null);
   const [historicalMaxes, setHistoricalMaxes] = useState([]);
 
   const isCoach = profile?.role === "coach";
@@ -63,87 +61,100 @@ export default function AthleteProgress({ profile, team }) {
     if (match) setSelectedRosterId(match.id);
   }, [profile, roster, isCoach]);
 
-  /* ================= LOAD LIVE MAXES ================= */
-
-  useEffect(() => {
-    if (!selectedRosterId) return;
-
-    const loadLive = async () => {
-      const snap = await getDoc(
-        doc(db, "seasonMaxesCurrent", selectedRosterId)
-      );
-      setLiveMaxes(snap.exists() ? snap.data() : null);
-    };
-
-    loadLive();
-  }, [selectedRosterId]);
-
-  /* ================= LOAD HISTORICAL SNAPSHOTS ================= */
+  /* ================= LOAD HISTORICAL ================= */
 
   useEffect(() => {
     if (!team?.id || !selectedRosterId) return;
 
-    const loadHistory = async () => {
-      const ref = collection(db, "seasonMaxes", team.id, "athletes");
+    const ref = collection(db, "seasonMaxes", team.id, "athletes");
 
-      const q = query(
-        ref,
-        where("athleteRosterId", "==", selectedRosterId)
-      );
+    const q = query(
+      ref,
+      where("athleteRosterId", "==", selectedRosterId)
+    );
 
-      const snap = await getDocs(q);
-
-      if (snap.empty) {
-        setHistoricalMaxes([]);
-        return;
-      }
-
-      const data = snap.docs.map(d => ({
+    const unsub = onSnapshot(q, snap => {
+      const docs = snap.docs.map(d => ({
         id: d.id,
         ...d.data()
       }));
+      setHistoricalMaxes(docs);
+    });
 
-      setHistoricalMaxes(data);
-    };
-
-    loadHistory();
+    return () => unsub();
   }, [team?.id, selectedRosterId]);
 
-  /* ================= SORT HISTORY ================= */
+  /* ================= SORT (seasonIndex FIRST) ================= */
 
-const sortedHistory = useMemo(() => {
-  if (!historicalMaxes.length) return [];
+  const sortedHistory = useMemo(() => {
+    if (!historicalMaxes.length) return [];
 
-  return [...historicalMaxes].sort((a, b) => {
-    if (a.year !== b.year) return a.year - b.year;
-    return seasonOrder[a.season] - seasonOrder[b.season];
-  });
-}, [historicalMaxes]);
+    return [...historicalMaxes].sort((a, b) => {
 
-/* ================= LATEST + PREVIOUS ================= */
+      // If seasonIndex exists (new system) → use it
+      if (a.seasonIndex && b.seasonIndex) {
+        return a.seasonIndex - b.seasonIndex;
+      }
 
-const latestSeason = sortedHistory[sortedHistory.length - 1] || null;
-const previousSeason =
-  sortedHistory.length > 1
-    ? sortedHistory[sortedHistory.length - 2]
-    : null;
+      // Fallback for old records
+      if (a.year !== b.year) return a.year - b.year;
 
-/* ================= CURRENT TOTAL ================= */
+      return seasonOrder[a.season] - seasonOrder[b.season];
+    });
 
-const currentTotal = latestSeason?.total || 0;
+  }, [historicalMaxes]);
 
-/* ================= % CHANGE ================= */
+  /* ================= LATEST + PREVIOUS ================= */
 
-const percentChange = useMemo(() => {
-  if (!latestSeason || !previousSeason) return null;
+  const latestSeason =
+    sortedHistory.length > 0
+      ? sortedHistory[sortedHistory.length - 1]
+      : null;
 
-  if (!previousSeason.total) return null;
+  const previousSeason =
+    sortedHistory.length > 1
+      ? sortedHistory[sortedHistory.length - 2]
+      : null;
 
-  return Math.round(
-    ((latestSeason.total - previousSeason.total) /
-      previousSeason.total) * 100
-  );
-}, [latestSeason, previousSeason]);
+  /* ================= % CHANGE ================= */
+
+  const percentChange = useMemo(() => {
+    if (!latestSeason || !previousSeason) return null;
+    if (!previousSeason.total) return null;
+
+    return Math.round(
+      ((latestSeason.total - previousSeason.total) /
+        previousSeason.total) * 100
+    );
+  }, [latestSeason, previousSeason]);
+
+  /* ================= BIGGEST GAIN ================= */
+
+  const biggestGain = useMemo(() => {
+
+    if (sortedHistory.length < 2) return null;
+
+    let maxGain = 0;
+    let bestPeriod = null;
+
+    for (let i = 1; i < sortedHistory.length; i++) {
+
+      const gain =
+        (sortedHistory[i].total || 0) -
+        (sortedHistory[i - 1].total || 0);
+
+      if (gain > maxGain) {
+        maxGain = gain;
+        bestPeriod =
+          `${sortedHistory[i - 1].season} ${sortedHistory[i - 1].year}
+           → ${sortedHistory[i].season} ${sortedHistory[i].year}`;
+      }
+    }
+
+    return maxGain > 0 ? { maxGain, bestPeriod } : null;
+
+  }, [sortedHistory]);
+
   /* ================= PR DETECTION ================= */
 
   const historyWithPR = useMemo(() => {
@@ -156,6 +167,7 @@ const percentChange = useMemo(() => {
       }
       return { ...d, isPR: false };
     });
+
   }, [sortedHistory]);
 
   const chartData = useMemo(() => {
@@ -172,9 +184,6 @@ const percentChange = useMemo(() => {
           curr.total > max.total ? curr : max
         )
       : null;
-
-  const athleteName =
-    roster.find(r => r.id === selectedRosterId)?.displayName || "";
 
   /* ================= UI ================= */
 
@@ -198,47 +207,49 @@ const percentChange = useMemo(() => {
       )}
 
       <hr />
-{/* LATEST MAXES */}
-{latestSeason && (
-  <>
-    <h3>🔥 Latest Season Maxes</h3>
-    <div className="dashboard-grid">
-      <Metric label="Bench" value={`${latestSeason.benchMax || 0} lbs`} />
-      <Metric label="Squat" value={`${latestSeason.squatMax || 0} lbs`} />
-      <Metric label="Power Clean" value={`${latestSeason.powerCleanMax || 0} lbs`} />
-      <Metric label="TOTAL" value={`${latestSeason.total || 0} lbs`} />
-    </div>
-  </>
-)}
 
-{/* PREVIOUS MAXES */}
-{previousSeason && (
-  <>
-    <h3 style={{ marginTop: 30 }}>📉 Previous Season</h3>
-    <div className="dashboard-grid">
-      <Metric label="Bench" value={`${previousSeason.benchMax || 0} lbs`} />
-      <Metric label="Squat" value={`${previousSeason.squatMax || 0} lbs`} />
-      <Metric label="Power Clean" value={`${previousSeason.powerCleanMax || 0} lbs`} />
-      <Metric label="TOTAL" value={`${previousSeason.total || 0} lbs`} />
-    </div>
-  </>
-)}
+      {/* ===== LATEST MAXES ===== */}
+      {latestSeason && (
+        <>
+          <h3>🔥 Latest Season Maxes</h3>
+          <div className="dashboard-grid">
+            <Metric label="Bench" value={`${latestSeason.benchMax || 0} lbs`} />
+            <Metric label="Squat" value={`${latestSeason.squatMax || 0} lbs`} />
+            <Metric label="Power Clean" value={`${latestSeason.powerCleanMax || 0} lbs`} />
+            <Metric label="TOTAL" value={`${latestSeason.total || 0} lbs`} />
+          </div>
+        </>
+      )}
 
-{/* % CHANGE */}
-{percentChange !== null && (
-  <div style={{ marginTop: 20 }}>
-    <strong>
-      {percentChange > 0 && "🔥 "}
-      {percentChange < 0 && "⚠️ "}
-      {percentChange === 0 && "➖ "}
-      {percentChange}% Change From Last Season
-    </strong>
-  </div>
-)}
-      {/* BIGGEST GAIN */}
+      {/* ===== PREVIOUS MAXES ===== */}
+      {previousSeason && (
+        <>
+          <h3 style={{ marginTop: 30 }}>📉 Previous Season</h3>
+          <div className="dashboard-grid">
+            <Metric label="Bench" value={`${previousSeason.benchMax || 0} lbs`} />
+            <Metric label="Squat" value={`${previousSeason.squatMax || 0} lbs`} />
+            <Metric label="Power Clean" value={`${previousSeason.powerCleanMax || 0} lbs`} />
+            <Metric label="TOTAL" value={`${previousSeason.total || 0} lbs`} />
+          </div>
+        </>
+      )}
+
+      {/* ===== % CHANGE ===== */}
+      {percentChange !== null && (
+        <div style={{ marginTop: 20 }}>
+          <strong>
+            {percentChange > 0 && "🔥 "}
+            {percentChange < 0 && "⚠️ "}
+            {percentChange === 0 && "➖ "}
+            {percentChange}% Change From Last Season
+          </strong>
+        </div>
+      )}
+
+      {/* ===== BIGGEST GAIN ===== */}
       {biggestGain && (
         <div style={{ marginTop: 10 }}>
-          🏆 Biggest Offseason Gain: +{biggestGain.maxGain} lbs  
+          🏆 Biggest Offseason Gain: +{biggestGain.maxGain} lbs
           <div style={{ fontSize: 12 }}>
             {biggestGain.bestPeriod}
           </div>
@@ -247,7 +258,7 @@ const percentChange = useMemo(() => {
 
       <hr />
 
-      {/* CHART */}
+      {/* ===== CHART ===== */}
       {chartData.length === 0 && (
         <div>No historical season data yet.</div>
       )}
@@ -287,7 +298,7 @@ const percentChange = useMemo(() => {
 
       {careerBest && (
         <div style={{ marginTop: 15 }}>
-          👑 Career Best Season: {careerBest.season} {careerBest.year}  
+          👑 Career Best Season: {careerBest.season} {careerBest.year}
           ({careerBest.total} lbs)
         </div>
       )}
