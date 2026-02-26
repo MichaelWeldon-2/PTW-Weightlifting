@@ -34,6 +34,16 @@ export default function Workouts({ profile, team }) {
 
   const isCoach = profile?.role === "coach";
 
+  /* ================= WEIGHT DROPDOWN ================= */
+
+  const weightOptions = useMemo(() => {
+    const arr = [];
+    for (let w = 135; w <= 425; w += 5) {
+      arr.push(w);
+    }
+    return arr;
+  }, []);
+
   /* ================= LOAD ROSTER ================= */
 
   useEffect(() => {
@@ -148,13 +158,17 @@ export default function Workouts({ profile, team }) {
     const baseWeight =
       exercise === "Squat" && selectionValue !== "Max"
         ? Math.round((Number(selectionValue) / 100) * currentMax)
-        : selectedWeight;
+        : Number(selectedWeight);
 
     let template;
 
-    if (selectionValue === "Max") template = teamTemplate?.Max;
-    else if (exercise === "Squat") template = teamTemplate?.Percentage;
-    else template = teamTemplate?.[`Box${selectionValue}`];
+    if (selectionValue === "Max") {
+      template = teamTemplate?.Max;
+    } else if (exercise === "Squat") {
+      template = teamTemplate?.Percentage;
+    } else {
+      template = teamTemplate?.[`Box${selectionValue}`];
+    }
 
     if (!Array.isArray(template)) return [];
 
@@ -171,16 +185,18 @@ export default function Workouts({ profile, team }) {
     await addDoc(collection(db, "workouts"), {
       teamId: team.id,
       athleteRosterId: selectedRosterId,
-      athleteDisplayName: roster.find(r => r.id === selectedRosterId)?.displayName,
+      athleteDisplayName:
+        roster.find(r => r.id === selectedRosterId)?.displayName,
       exercise,
       weight: Number(selectedWeight),
       selectionValue,
       result,
-      overrideReason: result === "Override" ? overrideReason : null,
+      overrideReason:
+        result === "Override" ? overrideReason : null,
       createdAt: serverTimestamp()
     });
 
-    /* ================= CALCULATE NEXT SESSION ================= */
+    /* ===== NEXT SESSION PROGRESSION ===== */
 
     let nextBox = selectionValue;
     let nextIsMax = false;
@@ -189,13 +205,14 @@ export default function Workouts({ profile, team }) {
 
       if (selectionValue === "Max") {
         nextBox = "1";
-      } else if (Number(selectionValue) >= 6) {
+      }
+      else if (Number(selectionValue) >= 6) {
         nextBox = "Max";
         nextIsMax = true;
-      } else {
+      }
+      else {
         nextBox = String(Number(selectionValue) + 1);
       }
-
     }
 
     await setDoc(
@@ -271,12 +288,17 @@ export default function Workouts({ profile, team }) {
           <option value="Max">Max</option>
         </select>
 
-        {/* WEIGHT DROPDOWN RESTORED */}
-        <input
-          type="number"
+        {/* ===== RESTORED WEIGHT DROPDOWN ===== */}
+        <select
           value={selectedWeight}
-          onChange={e => setSelectedWeight(e.target.value)}
-        />
+          onChange={e => setSelectedWeight(Number(e.target.value))}
+        >
+          {weightOptions.map(w => (
+            <option key={w} value={w}>
+              {w} lbs
+            </option>
+          ))}
+        </select>
 
         <div style={{ marginTop: 20 }}>
           {calculatedSets.map((set, i) => (
