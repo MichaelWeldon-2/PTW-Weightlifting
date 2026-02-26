@@ -86,23 +86,42 @@ export default function AthleteProgress({ profile, team }) {
 
   /* ================= SORT (seasonIndex FIRST) ================= */
 
-  const sortedHistory = useMemo(() => {
-    if (!historicalMaxes.length) return [];
+const sortedHistory = useMemo(() => {
+  if (!historicalMaxes.length) return [];
 
-    return [...historicalMaxes].sort((a, b) => {
+  const seasonOrder = {
+    Summer: 1,
+    Fall: 2,
+    Winter: 3,
+    Spring: 4
+  };
 
-      // If seasonIndex exists (new system) → use it
-      if (a.seasonIndex && b.seasonIndex) {
-        return a.seasonIndex - b.seasonIndex;
-      }
+  const getTrainingYear = (season, year) => {
+    if (season === "Winter" || season === "Spring") {
+      return Number(year) - 1;
+    }
+    return Number(year);
+  };
 
-      // Fallback for old records
-      if (a.year !== b.year) return a.year - b.year;
+  return [...historicalMaxes].sort((a, b) => {
 
-      return seasonOrder[a.season] - seasonOrder[b.season];
-    });
+    // ✅ If both have seasonIndex (new system) → use it
+    if (a.seasonIndex && b.seasonIndex) {
+      return a.seasonIndex - b.seasonIndex;
+    }
 
-  }, [historicalMaxes]);
+    // ✅ Otherwise compute training year
+    const aTrainingYear = getTrainingYear(a.season, a.year);
+    const bTrainingYear = getTrainingYear(b.season, b.year);
+
+    if (aTrainingYear !== bTrainingYear) {
+      return aTrainingYear - bTrainingYear;
+    }
+
+    return seasonOrder[a.season] - seasonOrder[b.season];
+  });
+
+}, [historicalMaxes]);
 
   /* ================= LATEST + PREVIOUS ================= */
 
