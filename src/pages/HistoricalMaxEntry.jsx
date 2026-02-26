@@ -90,11 +90,11 @@ export default function HistoricalMaxEntry({ team, profile }) {
   };
 
   const getTrainingYear = (season, year) => {
-    if (season === "Winter" || season === "Spring") {
-      return Number(year) - 1;
-    }
+  if (season === "Fall") {
     return Number(year);
-  };
+  }
+  return Number(year) - 1;
+};
 
   /* ================= SAVE ================= */
 
@@ -115,7 +115,7 @@ export default function HistoricalMaxEntry({ team, profile }) {
     const seasonIndex = trainingYear * 10 + seasonOrder[season];
 
     const snapshotId =
-      `${selectedAthlete}_${season}_${year}_${Date.now()}`;
+  `${selectedAthlete}_${season}_${year}`;
 
     const payload = {
       athleteRosterId: selectedAthlete,
@@ -156,77 +156,58 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   /* ================= MIGRATION TOOL ================= */
 
-  const migrateHistoricalData = async () => {
+const migrateSeasonData = async () => {
+  if (!team?.id) return;
+  if (!isCoach) return alert("Coach only action.");
 
-    if (!team?.id) return alert("Team not loaded.");
+  const confirmRun = window.confirm(
+    "This will fix all season year + trainingYear + seasonIndex values. Continue?"
+  );
 
-    try {
+  if (!confirmRun) return;
 
-      const historyRef = collection(db, "seasonMaxHistory", team.id, "athletes");
-      const historySnap = await getDocs(historyRef);
+  try {
+    const collectionsToFix = [
+      { path: "seasonMaxes" },
+      { path: "seasonMaxHistory" }
+    ];
 
-      if (historySnap.empty) {
-        alert("No historical records found.");
-        return;
-      }
+    for (const col of collectionsToFix) {
+      const ref = collection(db, col.path, team.id, "athletes");
+      const snap = await getDocs(ref);
 
-      const athleteLatestMap = {};
-      let migratedCount = 0;
-
-      for (const docSnap of historySnap.docs) {
-
+      for (const docSnap of snap.docs) {
         const data = docSnap.data();
 
-        const trainingYear =
-          data.trainingYear ??
-          getTrainingYear(data.season, data.year);
+        if (!data.season || !data.year) continue;
 
-        const seasonIndex =
-          data.seasonIndex ??
-          trainingYear * 10 + seasonOrder[data.season];
+        const correctedTrainingYear =
+          data.season === "Fall"
+            ? Number(data.year)
+            : Number(data.year) - 1;
 
-        const payload = {
-          ...data,
-          trainingYear,
-          seasonIndex
-        };
+        const correctedSeasonIndex =
+          correctedTrainingYear * 10 +
+          seasonOrder[data.season];
 
         await setDoc(
-          doc(db, "seasonMaxes", team.id, "athletes", docSnap.id),
-          payload,
-          { merge: true }
-        );
-
-        const score = seasonIndex;
-
-        if (!athleteLatestMap[data.athleteRosterId] ||
-            score > athleteLatestMap[data.athleteRosterId].score) {
-
-          athleteLatestMap[data.athleteRosterId] = {
-            score,
-            data: payload
-          };
-        }
-
-        migratedCount++;
-      }
-
-      for (const athleteId in athleteLatestMap) {
-        await setDoc(
-          doc(db, "seasonMaxesCurrent", athleteId),
-          athleteLatestMap[athleteId].data,
+          doc(db, col.path, team.id, "athletes", docSnap.id),
+          {
+            trainingYear: correctedTrainingYear,
+            seasonIndex: correctedSeasonIndex
+          },
           { merge: true }
         );
       }
-
-      alert(`Migration complete. ${migratedCount} records processed.`);
-
-    } catch (err) {
-      console.error(err);
-      alert("Migration failed. Check console.");
     }
-  };
 
+    alert("Migration complete. Reload page.");
+
+  } catch (err) {
+    console.error(err);
+    alert("Migration failed.");
+  }
+};
   /* ================= BULK UPLOAD ================= */
 
   const handleBulkUpload = async () => {
@@ -301,10 +282,10 @@ export default function HistoricalMaxEntry({ team, profile }) {
       alert("Bulk upload failed.");
     }
 
-    setBulkLoading(false);
-  };
+  setBulkLoading(false);
+};
 
-  /* ================= DELETE ================= */
+/* ================= DELETE ================= */
 
   const handleDelete = async (id) => {
     if (!isCoach || !team?.id) return;
@@ -404,13 +385,13 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
           <hr style={{ margin: "30px 0" }} />
 
-          <h3>⚙ Data Migration</h3>
+          <h3>🛠 Data Migration Tool</h3>
 
           <button
-            onClick={migrateHistoricalData}
+            onClick={migrateSeasonData}
             style={{ marginTop: 10 }}
           >
-            Migrate Historical Data → Season Maxes
+            Fix Season Ordering
           </button>
         </>
       )}

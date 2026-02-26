@@ -87,7 +87,9 @@ export default function AthleteProgress({ profile, team }) {
   /* ================= SORT (seasonIndex FIRST) ================= */
 
 const sortedHistory = useMemo(() => {
-  if (!historicalMaxes.length) return [];
+  return [...historicalMaxes].sort(
+    (a, b) => (a.seasonIndex || 0) - (b.seasonIndex || 0)
+  );
 
   const seasonOrder = {
     Summer: 1,
