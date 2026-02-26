@@ -181,10 +181,10 @@ const migrateSeasonData = async () => {
 
         if (!data.season || !data.year) continue;
 
-        const correctedTrainingYear =
-          data.season === "Fall"
-            ? Number(data.year)
-            : Number(data.year) - 1;
+       const correctedTrainingYear =
+  data.season === "Winter" || data.season === "Spring"
+    ? Number(data.year) - 1
+    : Number(data.year);
 
         const correctedSeasonIndex =
           correctedTrainingYear * 10 +
