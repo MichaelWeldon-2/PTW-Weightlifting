@@ -109,66 +109,41 @@ export default function AthleteProgress({ profile, team }) {
     loadHistory();
   }, [team?.id, selectedRosterId]);
 
-  /* ================= CURRENT TOTAL ================= */
-
-  const currentTotal = useMemo(() => {
-    if (!liveMaxes) return 0;
-    return (
-      (liveMaxes.benchMax || 0) +
-      (liveMaxes.squatMax || 0) +
-      (liveMaxes.powerCleanMax || 0)
-    );
-  }, [liveMaxes]);
-
   /* ================= SORT HISTORY ================= */
 
-  const sortedHistory = useMemo(() => {
-    if (!historicalMaxes.length) return [];
+const sortedHistory = useMemo(() => {
+  if (!historicalMaxes.length) return [];
 
-    return [...historicalMaxes].sort((a, b) => {
-      if (a.year !== b.year) return a.year - b.year;
-      return seasonOrder[a.season] - seasonOrder[b.season];
-    });
-  }, [historicalMaxes]);
+  return [...historicalMaxes].sort((a, b) => {
+    if (a.year !== b.year) return a.year - b.year;
+    return seasonOrder[a.season] - seasonOrder[b.season];
+  });
+}, [historicalMaxes]);
 
-  /* ================= % CHANGE ================= */
+/* ================= LATEST + PREVIOUS ================= */
 
-  const percentChange = useMemo(() => {
-    if (sortedHistory.length < 1) return null;
+const latestSeason = sortedHistory[sortedHistory.length - 1] || null;
+const previousSeason =
+  sortedHistory.length > 1
+    ? sortedHistory[sortedHistory.length - 2]
+    : null;
 
-    const lastSeason = sortedHistory[sortedHistory.length - 1];
-    const previousTotal = lastSeason.total || 0;
+/* ================= CURRENT TOTAL ================= */
 
-    if (!previousTotal) return null;
+const currentTotal = latestSeason?.total || 0;
 
-    return Math.round(
-      ((currentTotal - previousTotal) / previousTotal) * 100
-    );
-  }, [sortedHistory, currentTotal]);
+/* ================= % CHANGE ================= */
 
-  /* ================= BIGGEST GAIN ================= */
+const percentChange = useMemo(() => {
+  if (!latestSeason || !previousSeason) return null;
 
-  const biggestGain = useMemo(() => {
-    if (sortedHistory.length < 2) return null;
+  if (!previousSeason.total) return null;
 
-    let maxGain = 0;
-    let bestPeriod = null;
-
-    for (let i = 1; i < sortedHistory.length; i++) {
-      const gain =
-        (sortedHistory[i].total || 0) -
-        (sortedHistory[i - 1].total || 0);
-
-      if (gain > maxGain) {
-        maxGain = gain;
-        bestPeriod = `${sortedHistory[i - 1].season} ${sortedHistory[i - 1].year}
-          → ${sortedHistory[i].season} ${sortedHistory[i].year}`;
-      }
-    }
-
-    return maxGain > 0 ? { maxGain, bestPeriod } : null;
-  }, [sortedHistory]);
-
+  return Math.round(
+    ((latestSeason.total - previousSeason.total) /
+      previousSeason.total) * 100
+  );
+}, [latestSeason, previousSeason]);
   /* ================= PR DETECTION ================= */
 
   const historyWithPR = useMemo(() => {
@@ -223,29 +198,43 @@ export default function AthleteProgress({ profile, team }) {
       )}
 
       <hr />
+{/* LATEST MAXES */}
+{latestSeason && (
+  <>
+    <h3>🔥 Latest Season Maxes</h3>
+    <div className="dashboard-grid">
+      <Metric label="Bench" value={`${latestSeason.benchMax || 0} lbs`} />
+      <Metric label="Squat" value={`${latestSeason.squatMax || 0} lbs`} />
+      <Metric label="Power Clean" value={`${latestSeason.powerCleanMax || 0} lbs`} />
+      <Metric label="TOTAL" value={`${latestSeason.total || 0} lbs`} />
+    </div>
+  </>
+)}
 
-      {/* LIVE MAXES */}
-      {liveMaxes && (
-        <div className="dashboard-grid">
-          <Metric label="Bench" value={`${liveMaxes.benchMax || 0} lbs`} />
-          <Metric label="Squat" value={`${liveMaxes.squatMax || 0} lbs`} />
-          <Metric label="Power Clean" value={`${liveMaxes.powerCleanMax || 0} lbs`} />
-          <Metric label="TOTAL" value={`${currentTotal} lbs`} />
-        </div>
-      )}
+{/* PREVIOUS MAXES */}
+{previousSeason && (
+  <>
+    <h3 style={{ marginTop: 30 }}>📉 Previous Season</h3>
+    <div className="dashboard-grid">
+      <Metric label="Bench" value={`${previousSeason.benchMax || 0} lbs`} />
+      <Metric label="Squat" value={`${previousSeason.squatMax || 0} lbs`} />
+      <Metric label="Power Clean" value={`${previousSeason.powerCleanMax || 0} lbs`} />
+      <Metric label="TOTAL" value={`${previousSeason.total || 0} lbs`} />
+    </div>
+  </>
+)}
 
-      {/* % CHANGE */}
-      {percentChange !== null && (
-        <div style={{ marginTop: 20 }}>
-          <strong>
-            {percentChange > 0 && "🔥 "}
-            {percentChange < 0 && "⚠️ "}
-            {percentChange === 0 && "➖ "}
-            {percentChange}% Change From Last Season
-          </strong>
-        </div>
-      )}
-
+{/* % CHANGE */}
+{percentChange !== null && (
+  <div style={{ marginTop: 20 }}>
+    <strong>
+      {percentChange > 0 && "🔥 "}
+      {percentChange < 0 && "⚠️ "}
+      {percentChange === 0 && "➖ "}
+      {percentChange}% Change From Last Season
+    </strong>
+  </div>
+)}
       {/* BIGGEST GAIN */}
       {biggestGain && (
         <div style={{ marginTop: 10 }}>
