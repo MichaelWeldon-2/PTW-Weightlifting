@@ -1,119 +1,188 @@
-import { useEffect, useState, useMemo } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
-import { calculateTeamAnalytics } from "../utils/teamAnalytics";
-export default function CoachDashboard({ team }) {
+export function calculateTeamAnalytics(workouts, roster, days = 30) {
 
-  const [workouts, setWorkouts] = useState([]);
-  const [roster, setRoster] = useState([]);
-  const [timeFilter, setTimeFilter] = useState(30);
+  if (!workouts?.length) {
+    return {
+      passRate: 0,
+      totalVolume: 0,
+      improving: 0,
+      declining: 0,
+      improvingList: [],
+      decliningList: [],
+      alerts: 0,
+      topPerformer: null,
+      mostImproved: null,
+      fatigueStatus: "Stable"
+    };
+  }
 
-  /* ================= LOAD ROSTER ================= */
+  const cutoff = Date.now() - days * 86400000;
 
-  useEffect(() => {
-    if (!team?.id) {
-      setRoster([]);
-      return;
+  const filtered = workouts.filter(w => {
+    const ts = w.createdAt?.seconds
+      ? w.createdAt.seconds * 1000
+      : null;
+    return ts && ts >= cutoff;
+  });
+
+  if (!filtered.length) {
+    return {
+      passRate: 0,
+      totalVolume: 0,
+      improving: 0,
+      declining: 0,
+      improvingList: [],
+      decliningList: [],
+      alerts: 0,
+      topPerformer: null,
+      mostImproved: null,
+      fatigueStatus: "Stable"
+    };
+  }
+
+  let totalPass = 0;
+  let totalAttempts = 0;
+  let totalVolume = 0;
+
+  const athleteMap = {};
+  const progressMap = {};
+  const streakMap = {};
+
+  filtered.forEach(w => {
+
+    const weight = Number(w.weight) || 0;
+    if (!weight || w.result === "Override") return;
+
+    totalAttempts++;
+    totalVolume += weight;
+    if (w.result === "Pass") totalPass++;
+
+    const rosterEntry = roster.find(r => r.id === w.athleteRosterId);
+    const name =
+      rosterEntry?.displayName ||
+      w.athleteDisplayName ||
+      "Unknown";
+
+    /* ===== STREAK TRACKING ===== */
+
+    const streakKey = `${w.athleteRosterId}-${w.exercise}-${w.weight}`;
+    if (!streakMap[streakKey]) streakMap[streakKey] = 0;
+
+    if (w.result === "Fail") streakMap[streakKey]++;
+    else streakMap[streakKey] = 0;
+
+    /* ===== PROGRESS TRACKING ===== */
+
+    const progressKey = `${w.athleteRosterId}-${w.exercise}`;
+    if (!progressMap[progressKey]) {
+      progressMap[progressKey] = {
+        athleteId: w.athleteRosterId,
+        athleteName: name,
+        weights: []
+      };
     }
 
-    const rosterRef = collection(db, "athletes", team.id, "roster");
+    progressMap[progressKey].weights.push(weight);
 
-    const unsub = onSnapshot(rosterRef, snap => {
-      const list = snap.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
-      setRoster(list);
-    });
+    /* ===== ATHLETE AGGREGATE ===== */
 
-    return () => unsub();
-  }, [team?.id]);
-
-  /* ================= LOAD TEAM WORKOUTS ================= */
-
-  useEffect(() => {
-
-    if (!team?.id) {
-      setWorkouts([]);
-      return;
+    if (!athleteMap[w.athleteRosterId]) {
+      athleteMap[w.athleteRosterId] = {
+        id: w.athleteRosterId,
+        name,
+        volume: 0,
+        weights: [],
+        fails: 0
+      };
     }
 
-    const q = query(
-      collection(db, "workouts"),
-      where("teamId", "==", team.id)
-    );
+    athleteMap[w.athleteRosterId].volume += weight;
+    athleteMap[w.athleteRosterId].weights.push(weight);
 
-    const unsub = onSnapshot(q, snap => {
-      setWorkouts(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
-    });
+    if (w.result === "Fail") {
+      athleteMap[w.athleteRosterId].fails++;
+    }
+  });
 
-    return () => unsub();
+  /* ===== PASS RATE ===== */
 
-  }, [team?.id]);
+  const passRate =
+    totalAttempts > 0
+      ? Math.round((totalPass / totalAttempts) * 100)
+      : 0;
 
-  /* ================= TIME FILTER ================= */
+  /* ===== IMPROVEMENT LOGIC ===== */
 
-  const filteredWorkouts = useMemo(() => {
+  const improvingList = [];
+  const decliningList = [];
 
-    const cutoff = Date.now() - timeFilter * 86400000;
+  Object.values(progressMap).forEach(p => {
+    if (p.weights.length >= 2) {
+      const first = p.weights[0];
+      const last = p.weights[p.weights.length - 1];
 
-    return workouts.filter(w => {
-      const timestamp = w.createdAt?.seconds
-        ? w.createdAt.seconds * 1000
-        : null;
+      if (last > first) {
+        improvingList.push(p);
+      }
 
-      return timestamp && timestamp >= cutoff;
-    });
+      if (last < first) {
+        decliningList.push(p);
+      }
+    }
+  });
 
-  }, [workouts, timeFilter]);
+  /* ===== ALERTS ===== */
 
-  /* ================= ANALYTICS ================= */
+  const alerts =
+    Object.values(streakMap).filter(v => v >= 3).length;
 
- const analytics = useMemo(() => {
-  return calculateTeamAnalytics(workouts, roster, timeFilter);
-}, [workouts, roster, timeFilter]);
+  /* ===== TOP PERFORMER ===== */
 
-  /* ================= UI ================= */
+  const topPerformer =
+    Object.values(athleteMap)
+      .sort((a,b)=>b.volume - a.volume)[0] || null;
 
-  return (
-    <div className="card">
+  /* ===== MOST IMPROVED ===== */
 
-      <h2>🧠 Coach Intelligence Dashboard</h2>
+  let mostImproved = null;
+  let bestImprovement = 0;
 
-      <select
-        value={timeFilter}
-        onChange={e => setTimeFilter(Number(e.target.value))}
-      >
-        <option value={7}>Last 7 Days</option>
-        <option value={30}>Last 30 Days</option>
-        <option value={90}>Last 90 Days</option>
-      </select>
+  Object.values(athleteMap).forEach(a => {
+    if (a.weights.length >= 2) {
+      const improvement =
+        a.weights[a.weights.length - 1] - a.weights[0];
 
-      <div className="dashboard-grid">
-        <Metric label="Pass Rate" value={`${analytics.passRate}%`} />
-        <Metric label="Total Volume" value={`${analytics.totalVolume.toLocaleString()} lbs`} />
-        <Metric label="Top Performer" value={analytics.topPerformer?.name || "N/A"} />
-        <Metric label="Most Improved" value={analytics.mostImproved?.name || "N/A"} />
-        <Metric label="Improving Athletes" value={analytics.improving} />
-        <Metric label="Declining Athletes" value={analytics.declining} />
-        <Metric label="Team Fatigue" value={analytics.fatigueStatus} />
-        <Metric label="Alerts" value={analytics.alerts} />
-      </div>
+      if (improvement > bestImprovement) {
+        bestImprovement = improvement;
+        mostImproved = a;
+      }
+    }
+  });
 
-    </div>
-  );
-}
+  /* ===== FATIGUE ===== */
 
-function Metric({ label, value }) {
-  return (
-    <div className="card metric-card">
-      <h4>{label}</h4>
-      <div className="metric-value">{value}</div>
-    </div>
-  );
+  const totalFails =
+    Object.values(athleteMap)
+      .reduce((sum,a)=>sum+a.fails,0);
+
+  const failRate =
+    totalAttempts > 0
+      ? totalFails / totalAttempts
+      : 0;
+
+  let fatigueStatus = "Stable";
+  if (failRate >= 0.5) fatigueStatus = "Critical";
+  else if (failRate >= 0.3) fatigueStatus = "Warning";
+
+  return {
+    passRate,
+    totalVolume,
+    fatigueStatus,
+    topPerformer,
+    mostImproved,
+    improving: improvingList.length,
+    declining: decliningList.length,
+    improvingList,
+    decliningList,
+    alerts
+  };
 }
