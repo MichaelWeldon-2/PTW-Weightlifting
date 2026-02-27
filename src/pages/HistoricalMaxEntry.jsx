@@ -31,19 +31,20 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   const isCoach = profile?.role === "coach";
 
-  /* ================= CONSTANTS ================= */
+  /* ================= SCHOOL YEAR CONSTANTS ================= */
 
   const seasonOrder = {
-    Summer: 1,
-    Fall: 2,
-    Winter: 3,
-    Spring: 4
+    Fall: 1,
+    Winter: 2,
+    Spring: 3,
+    Summer: 4
   };
 
   const getTrainingYear = (season, year) => {
-    return season === "Winter" || season === "Spring"
-      ? Number(year) - 1
-      : Number(year);
+    if (season === "Winter" || season === "Spring" || season === "Summer") {
+      return Number(year) - 1;
+    }
+    return Number(year);
   };
 
   const buildSeasonIndex = (season, year) => {
@@ -59,11 +60,9 @@ export default function HistoricalMaxEntry({ team, profile }) {
     const rosterRef = collection(db, "athletes", team.id, "roster");
 
     const unsub = onSnapshot(rosterRef, snap => {
-      const list = snap.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
-      setAthletes(list);
+      setAthletes(
+        snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      );
     });
 
     return () => unsub();
@@ -77,10 +76,10 @@ export default function HistoricalMaxEntry({ team, profile }) {
     const ref = collection(db, "seasonMaxes", team.id, "athletes");
 
     const unsub = onSnapshot(ref, snap => {
-      const docs = snap.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
+      const docs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.seasonIndex || 0) - (b.seasonIndex || 0));
+
       setHistory(docs);
     });
 
@@ -105,17 +104,26 @@ export default function HistoricalMaxEntry({ team, profile }) {
     if (!team?.id) return alert("Team not loaded");
     if (!selectedAthlete) return alert("Select athlete");
 
-    const athlete = athletes.find(a => a.id === selectedAthlete);
+    const snapshotId = `${selectedAthlete}_${season}_${year}`;
 
-    const total =
-      (Number(benchMax) || 0) +
-      (Number(squatMax) || 0) +
-      (Number(powerCleanMax) || 0);
+    const existingRef = doc(
+      db,
+      "seasonMaxes",
+      team.id,
+      "athletes",
+      snapshotId
+    );
+
+    const existingSnap = await getDoc(existingRef);
+
+    if (existingSnap.exists()) {
+      return alert("Season already exists for this athlete.");
+    }
+
+    const athlete = athletes.find(a => a.id === selectedAthlete);
 
     const trainingYear = getTrainingYear(season, year);
     const seasonIndex = buildSeasonIndex(season, year);
-
-    const snapshotId = `${selectedAthlete}_${season}_${year}`;
 
     const payload = {
       athleteRosterId: selectedAthlete,
@@ -127,21 +135,17 @@ export default function HistoricalMaxEntry({ team, profile }) {
       benchMax: Number(benchMax) || 0,
       squatMax: Number(squatMax) || 0,
       powerCleanMax: Number(powerCleanMax) || 0,
-      total,
+      total: totalPreview,
       createdAt: serverTimestamp()
     };
+
+    await setDoc(existingRef, payload);
 
     await setDoc(
       doc(db, "seasonMaxHistory", team.id, "athletes", snapshotId),
       payload
     );
 
-    await setDoc(
-      doc(db, "seasonMaxes", team.id, "athletes", snapshotId),
-      payload
-    );
-
-    // Update current max if newer
     const currentRef = doc(db, "seasonMaxesCurrent", selectedAthlete);
     const currentSnap = await getDoc(currentRef);
 
@@ -155,18 +159,16 @@ export default function HistoricalMaxEntry({ team, profile }) {
     setPowerCleanMax("");
   };
 
-  /* ================= FULL REBUILD MIGRATION TOOL ================= */
+  /* ================= MIGRATION TOOL ================= */
 
   const migrateSeasonData = async () => {
 
     if (!team?.id) return;
     if (!isCoach) return alert("Coach only action.");
 
-    const confirmRun = window.confirm(
-      "This will FIX season indexes AND completely rebuild current maxes. Continue?"
-    );
-
-    if (!confirmRun) return;
+    if (!window.confirm(
+      "Rebuild ALL season indexes using school-year logic and rebuild current maxes?"
+    )) return;
 
     try {
 
@@ -186,9 +188,8 @@ export default function HistoricalMaxEntry({ team, profile }) {
         const correctedSeasonIndex =
           buildSeasonIndex(data.season, data.year);
 
-        // Fix season index
         await setDoc(
-          doc(db, "seasonMaxes", team.id, "athletes", docSnap.id),
+          docSnap.ref,
           {
             trainingYear: correctedTrainingYear,
             seasonIndex: correctedSeasonIndex
@@ -196,7 +197,6 @@ export default function HistoricalMaxEntry({ team, profile }) {
           { merge: true }
         );
 
-        // Track latest per athlete
         const athleteId = data.athleteRosterId;
 
         if (
@@ -212,7 +212,6 @@ export default function HistoricalMaxEntry({ team, profile }) {
         }
       }
 
-      // 🔥 Rebuild seasonMaxesCurrent
       for (const athleteId in athleteLatestMap) {
         await setDoc(
           doc(db, "seasonMaxesCurrent", athleteId),
@@ -220,100 +219,12 @@ export default function HistoricalMaxEntry({ team, profile }) {
         );
       }
 
-      alert("Season data fully rebuilt. Reload page.");
+      alert("Season data rebuilt successfully. Reload page.");
 
     } catch (err) {
       console.error(err);
       alert("Migration failed.");
     }
-  };
-
-  /* ================= BULK UPLOAD ================= */
-
-  const handleBulkUpload = async () => {
-
-    if (!isCoach) return alert("Only coaches can bulk upload.");
-    if (!bulkInput.trim()) return alert("Paste CSV data first.");
-
-    setBulkLoading(true);
-    setBulkResult(null);
-
-    try {
-
-      const lines = bulkInput.trim().split("\n");
-      const dataLines = lines.slice(1);
-
-      let successCount = 0;
-      let failCount = 0;
-
-      for (const line of dataLines) {
-
-        const [name, seasonVal, yearVal, bench, squat, clean] =
-          line.split(",");
-
-        const rosterMatch = athletes.find(a =>
-          a.displayName?.toLowerCase().trim() ===
-          name.toLowerCase().trim()
-        );
-
-        if (!rosterMatch) {
-          failCount++;
-          continue;
-        }
-
-        const total =
-          (Number(bench) || 0) +
-          (Number(squat) || 0) +
-          (Number(clean) || 0);
-
-        const seasonIndex =
-          buildSeasonIndex(seasonVal, yearVal);
-
-        const docId =
-          `${rosterMatch.id}_${seasonVal}_${yearVal}`;
-
-        await setDoc(
-          doc(db, "seasonMaxes", team.id, "athletes", docId),
-          {
-            athleteRosterId: rosterMatch.id,
-            athleteDisplayName: rosterMatch.displayName,
-            season: seasonVal,
-            year: Number(yearVal),
-            trainingYear:
-              getTrainingYear(seasonVal, yearVal),
-            seasonIndex,
-            benchMax: Number(bench) || 0,
-            squatMax: Number(squat) || 0,
-            powerCleanMax: Number(clean) || 0,
-            total,
-            updatedAt: serverTimestamp()
-          }
-        );
-
-        successCount++;
-      }
-
-      setBulkResult(
-        `✅ Uploaded ${successCount} records. ❌ Failed: ${failCount}`
-      );
-
-      setBulkInput("");
-
-    } catch (err) {
-      console.error(err);
-      alert("Bulk upload failed.");
-    }
-
-    setBulkLoading(false);
-  };
-
-  /* ================= DELETE ================= */
-
-  const handleDelete = async (id) => {
-    if (!isCoach || !team?.id) return;
-    await deleteDoc(
-      doc(db, "seasonMaxes", team.id, "athletes", id)
-    );
   };
 
   /* ================= UI ================= */
@@ -343,10 +254,10 @@ export default function HistoricalMaxEntry({ team, profile }) {
               value={season}
               onChange={e => setSeason(e.target.value)}
             >
-              <option>Summer</option>
               <option>Fall</option>
               <option>Winter</option>
               <option>Spring</option>
+              <option>Summer</option>
             </select>
 
             <input
@@ -376,7 +287,6 @@ export default function HistoricalMaxEntry({ team, profile }) {
               value={powerCleanMax}
               onChange={e => setPowerCleanMax(e.target.value)}
             />
-
           </div>
 
           <div style={{ marginTop: 10 }}>
@@ -391,11 +301,8 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
           <h3>🛠 Data Migration Tool</h3>
 
-          <button
-            onClick={migrateSeasonData}
-            style={{ marginTop: 10 }}
-          >
-            Fix Season Ordering + Rebuild Current
+          <button onClick={migrateSeasonData}>
+            Rebuild Season Ordering
           </button>
         </>
       )}
@@ -409,27 +316,14 @@ export default function HistoricalMaxEntry({ team, profile }) {
       <div className="dashboard-grid">
         {history.map(h => (
           <div key={h.id} className="card metric-card">
-
             <h4>{h.athleteDisplayName}</h4>
             <div>{h.season} {h.year}</div>
-
             <div>Bench: {h.benchMax}</div>
             <div>Squat: {h.squatMax}</div>
             <div>Clean: {h.powerCleanMax}</div>
-
             <div className="metric-value">
               Total: {h.total}
             </div>
-
-            {isCoach && (
-              <button
-                style={{ marginTop: 10, background: "var(--danger)" }}
-                onClick={() => handleDelete(h.id)}
-              >
-                Delete
-              </button>
-            )}
-
           </div>
         ))}
       </div>
