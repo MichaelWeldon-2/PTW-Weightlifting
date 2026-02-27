@@ -86,50 +86,59 @@ export default function Leaderboard({ team }) {
 
   /* ================= MOST IMPROVED (TRUE PREVIOUS SEASON) ================= */
 
-  const mostImproved = useMemo(() => {
+ const mostImproved = useMemo(() => {
 
-    if (!currentSeasonIndex) return [];
+  if (!currentSeasonIndex) return [];
 
-    const previousSeasonIndex = currentSeasonIndex - 1;
+  // Get all unique season indexes sorted
+  const uniqueIndexes = [
+    ...new Set(allData.map(d => d.seasonIndex))
+  ].sort((a, b) => a - b);
 
-    const previousSeasonData = allData.filter(
-      d => d.seasonIndex === previousSeasonIndex
+  const currentPosition = uniqueIndexes.indexOf(currentSeasonIndex);
+  if (currentPosition <= 0) return [];
+
+  const previousSeasonIndex = uniqueIndexes[currentPosition - 1];
+
+  const previousSeasonData = allData.filter(
+    d => d.seasonIndex === previousSeasonIndex
+  );
+
+  const improvements = [];
+
+  seasonData.forEach(current => {
+
+    const previous = previousSeasonData.find(
+      p => p.athleteRosterId === current.athleteRosterId
     );
 
-    const improvements = [];
+    if (!previous) return;
 
-    seasonData.forEach(current => {
+    const diff = (current.total || 0) - (previous.total || 0);
 
-      const previous = previousSeasonData.find(
-        p => p.athleteRosterId === current.athleteRosterId
-      );
+    const percent =
+      previous.total > 0
+        ? ((diff / previous.total) * 100).toFixed(1)
+        : 0;
 
-      if (!previous) return;
+    const rosterEntry = roster.find(
+      r => r.id === current.athleteRosterId
+    );
 
-      const diff = (current.total || 0) - (previous.total || 0);
-      const percent =
-        previous.total > 0
-          ? ((diff / previous.total) * 100).toFixed(1)
-          : 0;
-
-      const rosterEntry = roster.find(
-        r => r.id === current.athleteRosterId
-      );
-
-      improvements.push({
-        athleteName:
-          rosterEntry?.displayName ||
-          current.athleteDisplayName ||
-          "Unknown",
-        diff,
-        percent
-      });
-
+    improvements.push({
+      athleteName:
+        rosterEntry?.displayName ||
+        current.athleteDisplayName ||
+        "Unknown",
+      diff,
+      percent
     });
 
-    return improvements.sort((a, b) => b.diff - a.diff);
+  });
 
-  }, [seasonData, allData, currentSeasonIndex, roster]);
+  return improvements.sort((a, b) => b.diff - a.diff);
+
+}, [seasonData, allData, currentSeasonIndex, roster]);
 
   /* ================= UI ================= */
 

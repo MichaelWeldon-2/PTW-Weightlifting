@@ -47,6 +47,10 @@ export function calculateTeamAnalytics(workouts, roster, days = 30) {
   const progressMap = {};
   const streakMap = {};
 
+  // ✅ ADD THESE (you were missing them)
+  const improvingList = [];
+  const decliningList = [];
+
   filtered.forEach(w => {
 
     const weight = Number(w.weight) || 0;
@@ -112,20 +116,18 @@ export function calculateTeamAnalytics(workouts, roster, days = 30) {
 
   /* ===== IMPROVEMENT LOGIC ===== */
 
-  const improvingList = [];
-  const decliningList = [];
-
   Object.values(progressMap).forEach(p => {
     if (p.weights.length >= 2) {
       const first = p.weights[0];
       const last = p.weights[p.weights.length - 1];
+      const diff = last - first;
 
-      if (last > first) {
-        improvingList.push(p);
+      if (diff > 0) {
+        improvingList.push({ name: p.athleteName, diff });
       }
 
-      if (last < first) {
-        decliningList.push(p);
+      if (diff < 0) {
+        decliningList.push({ name: p.athleteName, diff });
       }
     }
   });
