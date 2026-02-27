@@ -19,7 +19,7 @@ import {
 
 import { auth, db } from "./firebase";
 import { motion, AnimatePresence } from "framer-motion";
-
+import WorkoutLogger from "./pages/WorkoutLogger";
 import TeamSettings from "./pages/TeamSettings";
 import Dashboard from "./components/Dashboard";
 import Workouts from "./components/Workouts";
