@@ -161,71 +161,92 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   /* ================= MIGRATION TOOL ================= */
 
-  const migrateSeasonData = async () => {
+ const migrateSeasonData = async () => {
 
-    if (!team?.id) return;
-    if (!isCoach) return alert("Coach only action.");
+  if (!team?.id) return;
+  if (!isCoach) return alert("Coach only action.");
 
-    if (!window.confirm(
-      "Rebuild ALL season indexes using school-year logic and rebuild current maxes?"
-    )) return;
+  const confirmRun = window.confirm(
+    "FULL RESET: Recalculate ALL seasonIndex values and rebuild seasonMaxesCurrent. Continue?"
+  );
 
-    try {
+  if (!confirmRun) return;
 
-      const seasonRef = collection(db, "seasonMaxes", team.id, "athletes");
-      const seasonSnap = await getDocs(seasonRef);
+  try {
 
-      const athleteLatestMap = {};
+    const seasonOrder = {
+      Summer: 1,
+      Fall: 2,
+      Winter: 3,
+      Spring: 4
+    };
 
-      for (const docSnap of seasonSnap.docs) {
+    const getTrainingYear = (season, year) => {
+      return (season === "Winter" || season === "Spring")
+        ? Number(year) - 1
+        : Number(year);
+    };
 
-        const data = docSnap.data();
-        if (!data.season || !data.year) continue;
+    const buildSeasonIndex = (season, year) => {
+      const trainingYear = getTrainingYear(season, year);
+      return trainingYear * 10 + seasonOrder[season];
+    };
 
-        const correctedTrainingYear =
-          getTrainingYear(data.season, data.year);
+    const seasonRef = collection(db, "seasonMaxes", team.id, "athletes");
+    const seasonSnap = await getDocs(seasonRef);
 
-        const correctedSeasonIndex =
-          buildSeasonIndex(data.season, data.year);
+    const latestPerAthlete = {};
 
-        await setDoc(
-          docSnap.ref,
-          {
-            trainingYear: correctedTrainingYear,
-            seasonIndex: correctedSeasonIndex
-          },
-          { merge: true }
-        );
+    for (const docSnap of seasonSnap.docs) {
 
-        const athleteId = data.athleteRosterId;
+      const data = docSnap.data();
 
-        if (
-          !athleteLatestMap[athleteId] ||
-          correctedSeasonIndex >
-            athleteLatestMap[athleteId].seasonIndex
-        ) {
-          athleteLatestMap[athleteId] = {
-            ...data,
-            trainingYear: correctedTrainingYear,
-            seasonIndex: correctedSeasonIndex
-          };
-        }
+      const correctedTrainingYear =
+        getTrainingYear(data.season, data.year);
+
+      const correctedSeasonIndex =
+        buildSeasonIndex(data.season, data.year);
+
+      // ✅ Force overwrite seasonIndex correctly
+      await setDoc(
+        doc(db, "seasonMaxes", team.id, "athletes", docSnap.id),
+        {
+          trainingYear: correctedTrainingYear,
+          seasonIndex: correctedSeasonIndex
+        },
+        { merge: true }
+      );
+
+      const athleteId = data.athleteRosterId;
+
+      if (
+        !latestPerAthlete[athleteId] ||
+        correctedSeasonIndex >
+          latestPerAthlete[athleteId].seasonIndex
+      ) {
+        latestPerAthlete[athleteId] = {
+          ...data,
+          trainingYear: correctedTrainingYear,
+          seasonIndex: correctedSeasonIndex
+        };
       }
-
-      for (const athleteId in athleteLatestMap) {
-        await setDoc(
-          doc(db, "seasonMaxesCurrent", athleteId),
-          athleteLatestMap[athleteId]
-        );
-      }
-
-      alert("Season data rebuilt successfully. Reload page.");
-
-    } catch (err) {
-      console.error(err);
-      alert("Migration failed.");
     }
-  };
+
+    // 🔥 Hard reset seasonMaxesCurrent
+    for (const athleteId in latestPerAthlete) {
+      await setDoc(
+        doc(db, "seasonMaxesCurrent", athleteId),
+        latestPerAthlete[athleteId]
+      );
+    }
+
+    alert("FULL rebuild complete. Reload page.");
+
+  } catch (err) {
+    console.error(err);
+    alert("Migration failed.");
+  }
+};
 
   /* ================= UI ================= */
 
