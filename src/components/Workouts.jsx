@@ -132,39 +132,38 @@ export default function Workouts({ profile, team }) {
   /* ================= SAVE WORKOUT ================= */
   const saveWorkout = async () => {
 
-    if (!selectedRosterId) return alert("Select athlete.");
+  if (!selectedRosterId) return alert("Select athlete.");
 
-    await addDoc(collection(db, "workouts"), {
-      teamId: team.id,
-      athleteRosterId: selectedRosterId,
-      athleteDisplayName:
-        roster.find(r => r.id === selectedRosterId)?.displayName,
-      exercise,
-      weight:
-        exercise === "Squat" && selectionValue !== "Max"
-          ? Math.round((Number(selectionValue) / 100) * currentMax)
-          : Number(selectedWeight),
-      selectionValue,
-      result,
-      overrideReason:
-        result === "Override" ? overrideReason : null,
-      createdAt: serverTimestamp()
-    });
+  let finalWeight = Number(selectedWeight);
 
-    setSuccessFlash(true);
-    setTimeout(() => setSuccessFlash(false), 1000);
-    setOverrideReason("");
-  };
+  // 🏋️ Fix Squat Percentage Weight
+  if (exercise === "Squat" && selectionValue !== "Max") {
 
-  const athleteName =
-    roster.find(r => r.id === selectedRosterId)?.displayName || "Workout";
+    const percent = Number(selectionValue) / 100;
+    const rawWeight = percent * (liveMaxes?.squatMax || 0);
 
-  return (
-    <div className="workout-wrapper">
+    // 🔥 Round to nearest 5 lbs
+    finalWeight = Math.round(rawWeight / 5) * 5;
+  }
 
-      <div className="hero-header">
-        <h2>{athleteName}</h2>
-      </div>
+  await addDoc(collection(db, "workouts"), {
+    teamId: team.id,
+    athleteRosterId: selectedRosterId,
+    athleteDisplayName:
+      roster.find(r => r.id === selectedRosterId)?.displayName,
+    exercise,
+    weight: finalWeight,
+    selectionValue,
+    result,
+    overrideReason:
+      result === "Override" ? overrideReason : null,
+    createdAt: serverTimestamp()
+  });
+
+  setSuccessFlash(true);
+  setTimeout(() => setSuccessFlash(false), 1000);
+  setOverrideReason("");
+};
 
       {/* ================= LAST WORKOUT CARD ================= */}
       <div className="card metric-card">
