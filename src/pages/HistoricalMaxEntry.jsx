@@ -25,31 +25,19 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   const [history, setHistory] = useState([]);
 
-  const [bulkInput, setBulkInput] = useState("");
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState(null);
-
   const isCoach = profile?.role === "coach";
 
-  /* ================= SCHOOL YEAR CONSTANTS ================= */
+  /* ================= CALENDAR CONSTANTS ================= */
 
   const seasonOrder = {
-    Fall: 1,
-    Winter: 2,
-    Spring: 3,
-    Summer: 4
-  };
-
-  const getTrainingYear = (season, year) => {
-    if (season === "Winter" || season === "Spring" || season === "Summer") {
-      return Number(year) - 1;
-    }
-    return Number(year);
+    Summer: 1,
+    Fall: 2,
+    Winter: 3,
+    Spring: 4
   };
 
   const buildSeasonIndex = (season, year) => {
-    const trainingYear = getTrainingYear(season, year);
-    return trainingYear * 10 + seasonOrder[season];
+    return Number(year) * 10 + seasonOrder[season];
   };
 
   /* ================= LOAD ROSTER ================= */
@@ -115,14 +103,12 @@ export default function HistoricalMaxEntry({ team, profile }) {
     );
 
     const existingSnap = await getDoc(existingRef);
-
     if (existingSnap.exists()) {
       return alert("Season already exists for this athlete.");
     }
 
     const athlete = athletes.find(a => a.id === selectedAthlete);
 
-    const trainingYear = getTrainingYear(season, year);
     const seasonIndex = buildSeasonIndex(season, year);
 
     const payload = {
@@ -130,7 +116,6 @@ export default function HistoricalMaxEntry({ team, profile }) {
       athleteDisplayName: athlete?.displayName || "Unknown",
       season,
       year: Number(year),
-      trainingYear,
       seasonIndex,
       benchMax: Number(benchMax) || 0,
       squatMax: Number(squatMax) || 0,
@@ -161,92 +146,64 @@ export default function HistoricalMaxEntry({ team, profile }) {
 
   /* ================= MIGRATION TOOL ================= */
 
- const migrateSeasonData = async () => {
+  const migrateSeasonData = async () => {
 
-  if (!team?.id) return;
-  if (!isCoach) return alert("Coach only action.");
+    if (!team?.id) return;
+    if (!isCoach) return alert("Coach only action.");
 
-  const confirmRun = window.confirm(
-    "FULL RESET: Recalculate ALL seasonIndex values and rebuild seasonMaxesCurrent. Continue?"
-  );
+    const confirmRun = window.confirm(
+      "Recalculate ALL seasonIndex values using calendar logic and rebuild seasonMaxesCurrent?"
+    );
 
-  if (!confirmRun) return;
+    if (!confirmRun) return;
 
-  try {
+    try {
 
-    const seasonOrder = {
-      Summer: 1,
-      Fall: 2,
-      Winter: 3,
-      Spring: 4
-    };
+      const seasonRef = collection(db, "seasonMaxes", team.id, "athletes");
+      const seasonSnap = await getDocs(seasonRef);
 
-    const getTrainingYear = (season, year) => {
-      return (season === "Winter" || season === "Spring")
-        ? Number(year) - 1
-        : Number(year);
-    };
+      const latestPerAthlete = {};
 
-    const buildSeasonIndex = (season, year) => {
-      const trainingYear = getTrainingYear(season, year);
-      return trainingYear * 10 + seasonOrder[season];
-    };
+      for (const docSnap of seasonSnap.docs) {
 
-    const seasonRef = collection(db, "seasonMaxes", team.id, "athletes");
-    const seasonSnap = await getDocs(seasonRef);
+        const data = docSnap.data();
+        const correctedSeasonIndex =
+          Number(data.year) * 10 + seasonOrder[data.season];
 
-    const latestPerAthlete = {};
+        await setDoc(
+          doc(db, "seasonMaxes", team.id, "athletes", docSnap.id),
+          { seasonIndex: correctedSeasonIndex },
+          { merge: true }
+        );
 
-    for (const docSnap of seasonSnap.docs) {
+        const athleteId = data.athleteRosterId;
 
-      const data = docSnap.data();
-
-      const correctedTrainingYear =
-        getTrainingYear(data.season, data.year);
-
-      const correctedSeasonIndex =
-        buildSeasonIndex(data.season, data.year);
-
-      // ✅ Force overwrite seasonIndex correctly
-      await setDoc(
-        doc(db, "seasonMaxes", team.id, "athletes", docSnap.id),
-        {
-          trainingYear: correctedTrainingYear,
-          seasonIndex: correctedSeasonIndex
-        },
-        { merge: true }
-      );
-
-      const athleteId = data.athleteRosterId;
-
-      if (
-        !latestPerAthlete[athleteId] ||
-        correctedSeasonIndex >
-          latestPerAthlete[athleteId].seasonIndex
-      ) {
-        latestPerAthlete[athleteId] = {
-          ...data,
-          trainingYear: correctedTrainingYear,
-          seasonIndex: correctedSeasonIndex
-        };
+        if (
+          !latestPerAthlete[athleteId] ||
+          correctedSeasonIndex >
+            latestPerAthlete[athleteId].seasonIndex
+        ) {
+          latestPerAthlete[athleteId] = {
+            ...data,
+            seasonIndex: correctedSeasonIndex
+          };
+        }
       }
+
+      for (const athleteId in latestPerAthlete) {
+        await setDoc(
+          doc(db, "seasonMaxesCurrent", athleteId),
+          latestPerAthlete[athleteId]
+        );
+      }
+
+      alert("Calendar rebuild complete. Reload page.");
+
+    } catch (err) {
+      console.error(err);
+      alert("Migration failed.");
     }
-
-    // 🔥 Hard reset seasonMaxesCurrent
-    for (const athleteId in latestPerAthlete) {
-      await setDoc(
-        doc(db, "seasonMaxesCurrent", athleteId),
-        latestPerAthlete[athleteId]
-      );
-    }
-
-    alert("FULL rebuild complete. Reload page.");
-
-  } catch (err) {
-    console.error(err);
-    alert("Migration failed.");
-  }
-};
+  };
 
   /* ================= UI ================= */
 
@@ -275,10 +232,10 @@ export default function HistoricalMaxEntry({ team, profile }) {
               value={season}
               onChange={e => setSeason(e.target.value)}
             >
+              <option>Summer</option>
               <option>Fall</option>
               <option>Winter</option>
               <option>Spring</option>
-              <option>Summer</option>
             </select>
 
             <input
@@ -288,26 +245,21 @@ export default function HistoricalMaxEntry({ team, profile }) {
               placeholder="Year"
             />
 
-            <input
-              type="number"
-              placeholder="Bench"
+            <input type="number" placeholder="Bench"
               value={benchMax}
               onChange={e => setBenchMax(e.target.value)}
             />
 
-            <input
-              type="number"
-              placeholder="Squat"
+            <input type="number" placeholder="Squat"
               value={squatMax}
               onChange={e => setSquatMax(e.target.value)}
             />
 
-            <input
-              type="number"
-              placeholder="Clean"
+            <input type="number" placeholder="Clean"
               value={powerCleanMax}
               onChange={e => setPowerCleanMax(e.target.value)}
             />
+
           </div>
 
           <div style={{ marginTop: 10 }}>
@@ -321,7 +273,6 @@ export default function HistoricalMaxEntry({ team, profile }) {
           <hr style={{ margin: "30px 0" }} />
 
           <h3>🛠 Data Migration Tool</h3>
-
           <button onClick={migrateSeasonData}>
             Rebuild Season Ordering
           </button>

@@ -53,13 +53,28 @@ export default function Leaderboard({ team }) {
 
   /* ================= GET CURRENT SEASON INDEX ================= */
 
-  const currentSeasonIndex = useMemo(() => {
-    const found = allData.find(
-      d => d.year === Number(year) && d.season === season
-    );
-    return found?.seasonIndex || null;
-  }, [allData, year, season]);
+ const seasonOrder = {
+  Summer: 1,
+  Fall: 2,
+  Winter: 3,
+  Spring: 4
+};
 
+const currentSeasonIndex = useMemo(() => {
+
+  const found = allData.find(
+    d => d.year === Number(year) && d.season === season
+  );
+
+  if (!found) return null;
+
+  // ✅ Use stored seasonIndex if present
+  if (found.seasonIndex) return found.seasonIndex;
+
+  // ✅ Fallback calculation (only if old data)
+  return Number(found.year) * 10 + seasonOrder[found.season];
+
+}, [allData, year, season]);
   /* ================= FILTER CURRENT SEASON ================= */
 
   const seasonData = useMemo(() => {
