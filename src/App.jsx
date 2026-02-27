@@ -33,7 +33,7 @@ import HistoricalMaxEntry from "./pages/HistoricalMaxEntry";
 import AnnualPlanner from "./pages/AnnualPlanner";
 import Account from "./components/Account";
 import Roster from "./pages/Roster";
-
+import Notes from "./pages/Notes";
 import "./App.css";
 
 /* ================= NAV COMPONENTS ================= */
@@ -340,7 +340,7 @@ export default function App() {
 /> 
       <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
       <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
-
+<SidebarItem label="Notes" active={activeTab==="notes"} onClick={()=>setActiveTab("notes")} />
       {profile.role === "coach" && (
         <>
           <SidebarItem label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
@@ -395,6 +395,7 @@ export default function App() {
           {activeTab === "settings" && profile.role==="coach" && <TeamSettings team={activeTeam} profile={profile} />}
           {activeTab === "planner" && (<AnnualPlanner team={activeTeam} profile={profile} />)}
           {activeTab === "account" && <Account profile={profile} />}
+          {activeTab === "notes" && <Notes profile={profile} team={activeTeam} />}
 
         </motion.div>
       </AnimatePresence>
@@ -422,6 +423,7 @@ export default function App() {
            <DrawerItem label="Workout Log" onClick={()=>setActiveTabAndClose("log")} /> 
           <DrawerItem label="Progress" onClick={()=>setActiveTabAndClose("progress")} />
           <DrawerItem label="Leaderboard" onClick={()=>setActiveTabAndClose("leaderboard")} />
+          <DrawerItem label="Notes" onClick={()=>setActiveTabAndClose("notes")} />
 
           {profile.role === "coach" && (
             <>
