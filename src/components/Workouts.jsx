@@ -6,7 +6,6 @@ import {
   serverTimestamp,
   getDoc,
   doc,
-  setDoc,
   query,
   where,
   orderBy,
@@ -29,35 +28,33 @@ export default function Workouts({ profile, team }) {
   const [result, setResult] = useState("Pass");
   const [overrideReason, setOverrideReason] = useState("");
 
-  const [teamTemplate, setTeamTemplate] = useState(defaultTemplate);
+  const [teamTemplate] = useState(defaultTemplate);
   const [successFlash, setSuccessFlash] = useState(false);
 
   const isCoach = profile?.role === "coach";
 
-  /* LOAD ROSTER */
+  /* ================= LOAD ROSTER ================= */
   useEffect(() => {
     if (!team?.id) return;
 
     const unsub = onSnapshot(
       collection(db, "athletes", team.id, "roster"),
       snap => {
-        setRoster(
-          snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        );
+        setRoster(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }
     );
 
     return () => unsub();
   }, [team?.id]);
 
-  /* AUTO SELECT SELF */
+  /* ================= AUTO SELECT SELF ================= */
   useEffect(() => {
     if (!profile || isCoach) return;
     const match = roster.find(r => r.linkedUid === profile.uid);
     if (match) setSelectedRosterId(match.id);
   }, [profile, roster, isCoach]);
 
-  /* LOAD LAST 30 WORKOUTS FOR SELECTED ATHLETE */
+  /* ================= LOAD LAST 30 WORKOUTS ================= */
   useEffect(() => {
     if (!selectedRosterId) return;
 
@@ -69,33 +66,22 @@ export default function Workouts({ profile, team }) {
     );
 
     const unsub = onSnapshot(q, snap => {
-      setWorkouts(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
+      setWorkouts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
     return () => unsub();
   }, [selectedRosterId]);
 
-  /* LAST WORKOUT PER EXERCISE */
+  /* ================= LAST WORKOUT PER EXERCISE ================= */
   const lastWorkoutByExercise = useMemo(() => {
-
     const map = {};
-
     workouts.forEach(w => {
-      if (!map[w.exercise]) {
-        map[w.exercise] = w;
-      }
+      if (!map[w.exercise]) map[w.exercise] = w;
     });
-
     return map;
-
   }, [workouts]);
 
-  /* LOAD LIVE MAXES */
+  /* ================= LOAD LIVE MAXES ================= */
   useEffect(() => {
     if (!selectedRosterId) return;
 
@@ -109,7 +95,41 @@ export default function Workouts({ profile, team }) {
     load();
   }, [selectedRosterId]);
 
-  /* SAVE WORKOUT */
+  /* ================= CURRENT MAX ================= */
+  const currentMax = {
+    Bench: liveMaxes?.benchMax || 0,
+    Squat: liveMaxes?.squatMax || 0,
+    PowerClean: liveMaxes?.powerCleanMax || 0
+  }[exercise] || 0;
+
+  /* ================= CALCULATED SETS (RESTORED) ================= */
+  const calculatedSets = useMemo(() => {
+
+    let baseWeight = Number(selectedWeight);
+
+    if (exercise === "Squat" && selectionValue !== "Max") {
+      baseWeight = Math.round(
+        (Number(selectionValue) / 100) * currentMax
+      );
+    }
+
+    let template;
+
+    if (selectionValue === "Max") {
+      template = teamTemplate?.Max;
+    } else if (exercise === "Squat") {
+      template = teamTemplate?.Percentage;
+    } else {
+      template = teamTemplate?.[`Box${selectionValue}`];
+    }
+
+    if (!Array.isArray(template)) return [];
+
+    return calculateSets(template, baseWeight);
+
+  }, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
+
+  /* ================= SAVE WORKOUT ================= */
   const saveWorkout = async () => {
 
     if (!selectedRosterId) return alert("Select athlete.");
@@ -120,7 +140,10 @@ export default function Workouts({ profile, team }) {
       athleteDisplayName:
         roster.find(r => r.id === selectedRosterId)?.displayName,
       exercise,
-      weight: Number(selectedWeight),
+      weight:
+        exercise === "Squat" && selectionValue !== "Max"
+          ? Math.round((Number(selectionValue) / 100) * currentMax)
+          : Number(selectedWeight),
       selectionValue,
       result,
       overrideReason:
@@ -143,7 +166,7 @@ export default function Workouts({ profile, team }) {
         <h2>{athleteName}</h2>
       </div>
 
-      {/* LAST WORKOUT CARD */}
+      {/* ================= LAST WORKOUT CARD ================= */}
       <div className="card metric-card">
         <h3>Last Workout</h3>
 
@@ -151,9 +174,7 @@ export default function Workouts({ profile, team }) {
 
           const w = lastWorkoutByExercise[ex];
 
-          if (!w) {
-            return <div key={ex}>{ex} — No Data</div>;
-          }
+          if (!w) return <div key={ex}>{ex} — No Data</div>;
 
           return (
             <div key={ex}>
@@ -167,7 +188,7 @@ export default function Workouts({ profile, team }) {
         })}
       </div>
 
-      {/* CURRENT WORKOUT CARD */}
+      {/* ================= CURRENT WORKOUT ================= */}
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
 
         <h3>Current Workout</h3>
@@ -192,24 +213,49 @@ export default function Workouts({ profile, team }) {
           <option>PowerClean</option>
         </select>
 
-        <select
-          value={selectionValue}
-          onChange={e => setSelectionValue(e.target.value)}
-        >
-          {[1,2,3,4,5,6].map(b => (
-            <option key={b} value={b}>Box {b}</option>
-          ))}
-          <option value="Max">Max</option>
-        </select>
+        {/* BOX / PERCENTAGE SELECTOR */}
+        {exercise === "Squat" ? (
+          <select
+            value={selectionValue}
+            onChange={e => setSelectionValue(e.target.value)}
+          >
+            {[50,60,70,75,80,85,90,95].map(p => (
+              <option key={p} value={p}>{p}%</option>
+            ))}
+            <option value="Max">Max</option>
+          </select>
+        ) : (
+          <select
+            value={selectionValue}
+            onChange={e => setSelectionValue(e.target.value)}
+          >
+            {[1,2,3,4,5,6].map(b => (
+              <option key={b} value={b}>Box {b}</option>
+            ))}
+            <option value="Max">Max</option>
+          </select>
+        )}
 
-        <select
-          value={selectedWeight}
-          onChange={e => setSelectedWeight(Number(e.target.value))}
-        >
-          {Array.from({ length: 60 }, (_, i) => 135 + i * 5).map(w => (
-            <option key={w} value={w}>{w} lbs</option>
+        {/* WEIGHT SELECTOR (NOT USED FOR % SQUATS) */}
+        {exercise !== "Squat" && (
+          <select
+            value={selectedWeight}
+            onChange={e => setSelectedWeight(Number(e.target.value))}
+          >
+            {Array.from({ length: 60 }, (_, i) => 135 + i * 5).map(w => (
+              <option key={w} value={w}>{w} lbs</option>
+            ))}
+          </select>
+        )}
+
+        {/* ================= PREVIEW SETS (RESTORED) ================= */}
+        <div style={{ marginTop: 20 }}>
+          {calculatedSets.map((set, i) => (
+            <div key={i}>
+              <strong>Set {i + 1}</strong>: {set.reps} reps × {set.weight} lbs
+            </div>
           ))}
-        </select>
+        </div>
 
         <div style={{ marginTop: 20 }}>
           <select value={result} onChange={e => setResult(e.target.value)}>
