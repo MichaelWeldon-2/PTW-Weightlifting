@@ -219,7 +219,7 @@ export default function Workouts({ profile, team }) {
             value={selectionValue}
             onChange={e => setSelectionValue(e.target.value)}
           >
-            {[50,60,70,75,80,85,90,95].map(p => (
+            {[25,30,35,40,45,50,55,60,65,70,75,80,85,90].map(p => (
               <option key={p} value={p}>{p}%</option>
             ))}
             <option value="Max">Max</option>
