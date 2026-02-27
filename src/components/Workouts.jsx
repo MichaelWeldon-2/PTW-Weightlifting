@@ -105,87 +105,36 @@ export default function Workouts({ profile, team }) {
   /* ================= CALCULATED SETS (RESTORED) ================= */
   const calculatedSets = useMemo(() => {
 
-    let baseWeight = Number(selectedWeight);
+  const currentMax = {
+    Bench: liveMaxes?.benchMax || 0,
+    Squat: liveMaxes?.squatMax || 0,
+    PowerClean: liveMaxes?.powerCleanMax || 0
+  }[exercise] || 0;
 
-    if (exercise === "Squat" && selectionValue !== "Max") {
-      baseWeight = Math.round(
-        (Number(selectionValue) / 100) * currentMax
-      );
-    }
+  let baseWeight;
 
-    let template;
-
-    if (selectionValue === "Max") {
-      template = teamTemplate?.Max;
-    } else if (exercise === "Squat") {
-      template = teamTemplate?.Percentage;
-    } else {
-      template = teamTemplate?.[`Box${selectionValue}`];
-    }
-
-    if (!Array.isArray(template)) return [];
-
-    return calculateSets(template, baseWeight);
-
-  }, [exercise, selectionValue, selectedWeight, currentMax, teamTemplate]);
-
-  /* ================= SAVE WORKOUT ================= */
-  const saveWorkout = async () => {
-
-  if (!selectedRosterId) return alert("Select athlete.");
-
-  let finalWeight = Number(selectedWeight);
-
-  // 🏋️ Fix Squat Percentage Weight
   if (exercise === "Squat" && selectionValue !== "Max") {
-
     const percent = Number(selectionValue) / 100;
-    const rawWeight = percent * (liveMaxes?.squatMax || 0);
-
-    // 🔥 Round to nearest 5 lbs
-    finalWeight = Math.round(rawWeight / 5) * 5;
+    baseWeight = Math.round((percent * currentMax) / 5) * 5;
+  } else {
+    baseWeight = Number(selectedWeight);
   }
 
-  await addDoc(collection(db, "workouts"), {
-    teamId: team.id,
-    athleteRosterId: selectedRosterId,
-    athleteDisplayName:
-      roster.find(r => r.id === selectedRosterId)?.displayName,
-    exercise,
-    weight: finalWeight,
-    selectionValue,
-    result,
-    overrideReason:
-      result === "Override" ? overrideReason : null,
-    createdAt: serverTimestamp()
-  });
+  let template;
 
-  setSuccessFlash(true);
-  setTimeout(() => setSuccessFlash(false), 1000);
-  setOverrideReason("");
-};
+  if (selectionValue === "Max") {
+    template = teamTemplate?.Max;
+  } else if (exercise === "Squat") {
+    template = teamTemplate?.Percentage;
+  } else {
+    template = teamTemplate?.[`Box${selectionValue}`];
+  }
 
-      {/* ================= LAST WORKOUT CARD ================= */}
-      <div className="card metric-card">
-        <h3>Last Workout</h3>
+  if (!Array.isArray(template)) return [];
 
-        {["Bench", "Squat", "PowerClean"].map(ex => {
+  return calculateSets(template, baseWeight);
 
-          const w = lastWorkoutByExercise[ex];
-
-          if (!w) return <div key={ex}>{ex} — No Data</div>;
-
-          return (
-            <div key={ex}>
-              {ex} — {w.weight} lbs —
-              {ex === "Squat"
-                ? `${w.selectionValue}%`
-                : `Box ${w.selectionValue}`} —
-              {w.result}
-            </div>
-          );
-        })}
-      </div>
+}, [exercise, selectionValue, selectedWeight, liveMaxes, teamTemplate]);
 
       {/* ================= CURRENT WORKOUT ================= */}
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
