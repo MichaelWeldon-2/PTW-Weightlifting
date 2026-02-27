@@ -333,6 +333,11 @@ export default function App() {
 
       <SidebarItem label="Dashboard" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
       <SidebarItem label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
+       <SidebarItem 
+  label="Workout Log" 
+  active={activeTab==="log"} 
+  onClick={()=>setActiveTab("log")} 
+/> 
       <SidebarItem label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
       <SidebarItem label="Leaderboard" active={activeTab==="leaderboard"} onClick={()=>setActiveTab("leaderboard")} />
 
@@ -378,6 +383,7 @@ export default function App() {
 
           {activeTab === "dashboard" && <Dashboard profile={profile} team={activeTeam} />}
           {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
+          {activeTab === "log" && <WorkoutLogger profile={profile} team={activeTeam} />}
           {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
           {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
           {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
@@ -413,6 +419,7 @@ export default function App() {
 
           <DrawerItem label="Dashboard" onClick={()=>setActiveTabAndClose("dashboard")} />
           <DrawerItem label="Workouts" onClick={()=>setActiveTabAndClose("workouts")} />
+           <DrawerItem label="Workout Log" onClick={()=>setActiveTabAndClose("log")} /> 
           <DrawerItem label="Progress" onClick={()=>setActiveTabAndClose("progress")} />
           <DrawerItem label="Leaderboard" onClick={()=>setActiveTabAndClose("leaderboard")} />
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   collection,
   query,
@@ -13,8 +13,31 @@ export default function WorkoutLogger({ team, profile }) {
 
   const [workouts, setWorkouts] = useState([]);
   const [expanded, setExpanded] = useState(null);
+  const [roster, setRoster] = useState([]);
+  const [selectedAthlete, setSelectedAthlete] = useState("");
 
   const isCoach = profile?.role === "coach";
+
+  /* ================= LOAD ROSTER (FOR COACH FILTER) ================= */
+
+  useEffect(() => {
+    if (!team?.id || !isCoach) return;
+
+    const unsub = onSnapshot(
+      collection(db, "athletes", team.id, "roster"),
+      snap => {
+        const list = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }));
+        setRoster(list);
+      }
+    );
+
+    return () => unsub();
+  }, [team?.id, isCoach]);
+
+  /* ================= LOAD WORKOUTS ================= */
 
   useEffect(() => {
     if (!team?.id) return;
@@ -22,13 +45,25 @@ export default function WorkoutLogger({ team, profile }) {
     let q;
 
     if (isCoach) {
-      q = query(
-        collection(db, "workouts"),
-        where("teamId", "==", team.id),
-        orderBy("createdAt", "desc"),
-        limit(30)
-      );
+      // Coach sees all OR filtered athlete
+      if (selectedAthlete) {
+        q = query(
+          collection(db, "workouts"),
+          where("teamId", "==", team.id),
+          where("athleteRosterId", "==", selectedAthlete),
+          orderBy("createdAt", "desc"),
+          limit(30)
+        );
+      } else {
+        q = query(
+          collection(db, "workouts"),
+          where("teamId", "==", team.id),
+          orderBy("createdAt", "desc"),
+          limit(30)
+        );
+      }
     } else {
+      // Athlete sees only theirs
       q = query(
         collection(db, "workouts"),
         where("teamId", "==", team.id),
@@ -49,16 +84,59 @@ export default function WorkoutLogger({ team, profile }) {
 
     return () => unsub();
 
-  }, [team?.id, profile, isCoach]);
+  }, [team?.id, isCoach, selectedAthlete, profile]);
+
+  /* ================= PR DETECTION ================= */
+
+  const workoutsWithPR = useMemo(() => {
+
+    if (!workouts.length) return [];
+
+    const prMap = {}; // highest weight per athlete + exercise
+
+    return workouts.map(w => {
+
+      const key = `${w.athleteRosterId}_${w.exercise}`;
+
+      if (!prMap[key] || w.weight > prMap[key]) {
+        prMap[key] = w.weight;
+        return { ...w, isPR: true };
+      }
+
+      return { ...w, isPR: false };
+
+    });
+
+  }, [workouts]);
+
+  /* ================= UI ================= */
 
   return (
     <div className="card">
 
       <h2>📋 Workout Log</h2>
 
-      {workouts.length === 0 && <div>No workouts yet.</div>}
+      {/* ===== COACH FILTER ===== */}
+      {isCoach && (
+        <select
+          value={selectedAthlete}
+          onChange={e => setSelectedAthlete(e.target.value)}
+          style={{ marginBottom: 15 }}
+        >
+          <option value="">All Athletes</option>
+          {roster.map(r => (
+            <option key={r.id} value={r.id}>
+              {r.displayName}
+            </option>
+          ))}
+        </select>
+      )}
 
-      {workouts.map(w => {
+      {workoutsWithPR.length === 0 && (
+        <div>No workouts yet.</div>
+      )}
+
+      {workoutsWithPR.map(w => {
 
         const date = w.createdAt?.seconds
           ? new Date(w.createdAt.seconds * 1000)
@@ -75,9 +153,11 @@ export default function WorkoutLogger({ team, profile }) {
           >
             <strong>
               {w.exercise} — {w.weight} lbs — 
-              {w.exercise === "Squat"
-                ? `${w.selectionValue}%`
-                : `Box ${w.selectionValue}`} — {w.result}
+              {w.selectionValue === "Max"
+                ? "Max Attempt"
+                : `Box ${w.selectionValue}`} — 
+              {w.result}
+              {w.isPR && " 🏆"}
             </strong>
 
             {isCoach && (
@@ -92,12 +172,11 @@ export default function WorkoutLogger({ team, profile }) {
 
             {isOpen && (
               <div style={{ marginTop: 10 }}>
-                <div>Selection: {w.selectionValue}</div>
-                {w.overrideReason && (
-                  <div>Override: {w.overrideReason}</div>
-                )}
+                <div>Box: {w.selectionValue || "-"}</div>
+                <div>Override Reason: {w.overrideReason || "-"}</div>
               </div>
             )}
+
           </div>
         );
       })}
