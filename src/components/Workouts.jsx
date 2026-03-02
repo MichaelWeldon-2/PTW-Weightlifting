@@ -14,7 +14,7 @@ import {
 import { db } from "../firebase";
 import { defaultTemplate } from "../utils/boxTemplates";
 import { calculateSets } from "../utils/calculateSets";
-
+import HeroHeader from "./HeroHeader";
 export default function Workouts({ profile, team }) {
 
   const [roster, setRoster] = useState([]);
@@ -261,4 +261,8 @@ export default function Workouts({ profile, team }) {
       </div>
     </div>
   );
+<HeroHeader
+  title="Workouts"
+  image={team?.pageImages?.workouts}
+/>
 }

@@ -8,6 +8,7 @@ import {
   getDoc
 } from "firebase/firestore";
 import { db } from "../firebase";
+import HeroHeader from "../components/HeroHeader";
 import {
   LineChart,
   Line,
@@ -318,4 +319,8 @@ function Metric({ label, value }) {
       <div className="metric-value">{value}</div>
     </div>
   );
+  <HeroHeader
+    title="Progress"
+    image={team?.pageImages?.progress}
+  />
 }

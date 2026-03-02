@@ -9,7 +9,7 @@ import {
   orderBy
 } from "firebase/firestore";
 import { db } from "../firebase";
-
+import HeroHeader from "../components/HeroHeader";
 export default function Notes({ profile, team }) {
 
   const [notes, setNotes] = useState([]);
@@ -214,4 +214,8 @@ export default function Notes({ profile, team }) {
 
     </div>
   );
+  <HeroHeader
+  title="Notes"
+  image={team?.pageImages?.notes}
+/>
 }

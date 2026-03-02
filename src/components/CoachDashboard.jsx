@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { calculateTeamAnalytics } from "../utils/teamAnalytics";
-
+import HeroHeader from "../components/HeroHeader";
 export default function CoachDashboard({ team }) {
 
   const [workouts, setWorkouts] = useState([]);
@@ -146,4 +146,8 @@ function Metric({ label, value }) {
       <div className="metric-value">{value}</div>
     </div>
   );
+  <HeroHeader
+  title="Coach Dashboard"
+  image={team?.pageImages?.coach}
+/>
 }

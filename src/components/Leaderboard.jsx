@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
-
+import HeroHeader from "../components/HeroHeader";
 export default function Leaderboard({ team }) {
 
   const seasons = ["Summer", "Fall", "Winter", "Spring"];
@@ -233,4 +233,8 @@ const currentSeasonIndex = useMemo(() => {
 
     </div>
   );
+  <HeroHeader
+  title="Leaderboard"
+  image={team?.pageImages?.leaderboard}
+/>
 }

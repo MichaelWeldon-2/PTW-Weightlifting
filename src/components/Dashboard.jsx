@@ -14,7 +14,7 @@ import { db } from "../firebase";
 import { motion } from "framer-motion";
 import AnimatedStat from "./AnimatedStat";
 import { calculateTeamAnalytics } from "../utils/teamAnalytics";
-
+import HeroHeader from "./HeroHeader";
 function Dashboard({ profile, team }) {
 
   /* ================= STATE ================= */
@@ -238,16 +238,15 @@ function Dashboard({ profile, team }) {
     <div className="dashboard-wrapper">
 
       {/* ================= HERO HEADER (IMAGE ENABLED) ================= */}
-      <div className="hero-header" style={heroStyle}>
-        <div className="hero-overlay">
-          <h1>{team?.name || "Team Dashboard"}</h1>
-          <p>
-            {currentPhase
-              ? `${currentPhase.name} • Week ${currentPhase.week}/${currentPhase.totalWeeks}`
-              : ""}
-          </p>
-        </div>
-      </div>
+      <HeroHeader
+  title={team?.name || "Team Dashboard"}
+  subtitle={
+    currentPhase
+      ? `${currentPhase.name} • Week ${currentPhase.week}/${currentPhase.totalWeeks}`
+      : ""
+  }
+  image={team?.pageImages?.dashboard}
+/>
 
       <div className="dashboard-grid">
 

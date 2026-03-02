@@ -1,6 +1,6 @@
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
-
+import HeroHeader from "../components/HeroHeader";
 function Account({ profile }) {
 
   return (
@@ -20,6 +20,10 @@ function Account({ profile }) {
       </button>
     </div>
   );
+  <HeroHeader
+  title="Account"
+  image={team?.pageImages?.account}
+/>
 }
 
 export default Account;
