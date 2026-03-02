@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   collection,
   addDoc,
@@ -16,6 +16,7 @@ export default function Notes({ profile, team }) {
   const [roster, setRoster] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState("team");
   const [noteText, setNoteText] = useState("");
+  const [noteType, setNoteType] = useState("team"); // NEW
 
   const isCoach = profile?.role === "coach";
 
@@ -43,28 +44,22 @@ export default function Notes({ profile, team }) {
     let q;
 
     if (isCoach) {
-      if (selectedAthlete === "team") {
-        q = query(
-          collection(db, "notes"),
-          where("teamId", "==", team.id),
-          where("visibility", "==", "team"),
-          orderBy("createdAt", "desc")
-        );
-      } else {
-        q = query(
-          collection(db, "notes"),
-          where("teamId", "==", team.id),
-          where("athleteRosterId", "==", selectedAthlete),
-          orderBy("createdAt", "desc")
-        );
-      }
-    } else {
+
       q = query(
         collection(db, "notes"),
         where("teamId", "==", team.id),
-        where("athleteRosterId", "==", profile.athleteId),
         orderBy("createdAt", "desc")
       );
+
+    } else {
+
+      q = query(
+        collection(db, "notes"),
+        where("teamId", "==", team.id),
+        where("visibility", "in", ["team", "athlete", "self"]),
+        orderBy("createdAt", "desc")
+      );
+
     }
 
     const unsub = onSnapshot(q, snap => {
@@ -78,7 +73,32 @@ export default function Notes({ profile, team }) {
 
     return () => unsub();
 
-  }, [team?.id, selectedAthlete, profile, isCoach]);
+  }, [team?.id, profile, isCoach]);
+
+  /* ================= FILTER VISIBLE NOTES ================= */
+
+  const visibleNotes = useMemo(() => {
+
+    if (isCoach) {
+
+      if (selectedAthlete === "team") {
+        return notes.filter(n => n.visibility === "team");
+      }
+
+      return notes.filter(n =>
+        n.visibility === "team" ||
+        n.athleteRosterId === selectedAthlete
+      );
+    }
+
+    // Athlete view
+    return notes.filter(n =>
+      n.visibility === "team" ||
+      n.athleteRosterId === profile.athleteId ||
+      (n.visibility === "self" && n.createdByUid === profile.uid)
+    );
+
+  }, [notes, selectedAthlete, isCoach, profile]);
 
   /* ================= SAVE NOTE ================= */
 
@@ -86,19 +106,32 @@ export default function Notes({ profile, team }) {
 
     if (!noteText.trim()) return;
 
+    let visibility;
+    let athleteRosterId = null;
+
+    if (isCoach) {
+
+      if (selectedAthlete === "team") {
+        visibility = "team";
+      } else {
+        visibility = "athlete";
+        athleteRosterId = selectedAthlete;
+      }
+
+    } else {
+
+      visibility = "self";
+      athleteRosterId = profile.athleteId;
+
+    }
+
     await addDoc(collection(db, "notes"), {
       teamId: team.id,
       createdByUid: profile.uid,
       createdByName: profile.displayName,
       role: profile.role,
-      visibility: isCoach && selectedAthlete === "team"
-        ? "team"
-        : "athlete",
-      athleteRosterId: isCoach
-        ? selectedAthlete === "team"
-          ? null
-          : selectedAthlete
-        : profile.athleteId,
+      visibility,
+      athleteRosterId,
       text: noteText.trim(),
       createdAt: serverTimestamp()
     });
@@ -113,18 +146,26 @@ export default function Notes({ profile, team }) {
 
       <h2>📝 Notes</h2>
 
+      {/* ================= COACH FILTER ================= */}
       {isCoach && (
         <select
           value={selectedAthlete}
           onChange={e => setSelectedAthlete(e.target.value)}
         >
-          <option value="team">Team Notes</option>
+          <option value="team">📢 Team Notes</option>
           {roster.map(r => (
             <option key={r.id} value={r.id}>
-              {r.displayName}
+              👤 {r.displayName}
             </option>
           ))}
         </select>
+      )}
+
+      {/* ================= ATHLETE PRIVATE BUTTON ================= */}
+      {!isCoach && (
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+          📝 Personal notes are private to you.
+        </div>
       )}
 
       <div style={{ marginTop: 20 }}>
@@ -143,22 +184,30 @@ export default function Notes({ profile, team }) {
 
       <hr style={{ margin: "30px 0" }} />
 
-      {notes.length === 0 && <div>No notes yet.</div>}
+      {visibleNotes.length === 0 && <div>No notes yet.</div>}
 
-      {notes.map(n => {
+      {visibleNotes.map(n => {
 
         const date = n.createdAt?.seconds
           ? new Date(n.createdAt.seconds * 1000)
           : null;
 
+        let badge = "";
+        if (n.visibility === "team") badge = "📢 Team";
+        if (n.visibility === "athlete") badge = "👤 Direct";
+        if (n.visibility === "self") badge = "📝 Private";
+
         return (
           <div key={n.id} className="card metric-card" style={{ marginBottom: 10 }}>
+
             <div style={{ fontSize: 12, opacity: 0.7 }}>
-              {n.createdByName} — {date?.toLocaleDateString()}
+              {badge} — {n.createdByName} — {date?.toLocaleDateString()}
             </div>
+
             <div style={{ marginTop: 6 }}>
               {n.text}
             </div>
+
           </div>
         );
       })}

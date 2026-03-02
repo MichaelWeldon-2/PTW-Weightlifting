@@ -6,12 +6,15 @@ import {
   collection,
   query,
   where,
-  onSnapshot
+  onSnapshot,
+  orderBy,
+  limit
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { motion } from "framer-motion";
 import AnimatedStat from "./AnimatedStat";
 import { calculateTeamAnalytics } from "../utils/teamAnalytics";
+
 function Dashboard({ profile, team }) {
 
   /* ================= STATE ================= */
@@ -22,8 +25,16 @@ function Dashboard({ profile, team }) {
   const [competitionCountdown, setCompetitionCountdown] = useState(null);
   const [successFlash, setSuccessFlash] = useState(false);
   const [currentPhase, setCurrentPhase] = useState(null);
+  const [dashboardNotes, setDashboardNotes] = useState([]);
 
   const isCoach = profile?.role === "coach";
+
+  /* ================= HERO IMAGE SUPPORT ================= */
+
+  // Uses team.headerImage if it exists
+  const heroStyle = team?.headerImage
+    ? { backgroundImage: `url(${team.headerImage})` }
+    : {};
 
   /* ================= LOAD ROSTER ================= */
 
@@ -36,11 +47,12 @@ function Dashboard({ profile, team }) {
     const rosterRef = collection(db, "athletes", team.id, "roster");
 
     const unsub = onSnapshot(rosterRef, snap => {
-      const list = snap.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      }));
-      setRoster(list);
+      setRoster(
+        snap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }))
+      );
     });
 
     return () => unsub();
@@ -70,6 +82,41 @@ function Dashboard({ profile, team }) {
 
     return () => unsub();
   }, [team?.id]);
+
+  /* ================= LOAD DASHBOARD NOTES ================= */
+
+  useEffect(() => {
+    if (!team?.id) return;
+
+    const q = query(
+      collection(db, "notes"),
+      where("teamId", "==", team.id),
+      orderBy("createdAt", "desc"),
+      limit(20)
+    );
+
+    const unsub = onSnapshot(q, snap => {
+
+      let notes = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+
+      if (!isCoach) {
+        notes = notes.filter(n =>
+          n.visibility === "team" ||
+          n.athleteRosterId === profile.athleteId
+        );
+      } else {
+        notes = notes.filter(n => n.visibility === "team");
+      }
+
+      setDashboardNotes(notes.slice(0, 8));
+    });
+
+    return () => unsub();
+
+  }, [team?.id, profile, isCoach]);
 
   /* ================= CURRENT PHASE ================= */
 
@@ -144,45 +191,8 @@ function Dashboard({ profile, team }) {
   /* ================= ANALYTICS ================= */
 
   const analytics = useMemo(() => {
-  return calculateTeamAnalytics(workouts, roster, 30);
-}, [workouts, roster]);
-
-  /* ================= LOAD PROGRAM ================= */
-
-  useEffect(() => {
-
-    if (!team?.id) return;
-
-    const loadProgram = async () => {
-
-      const snap = await getDoc(doc(db, "teamPrograms", team.id));
-      if (!snap.exists()) return;
-
-      const program = snap.data();
-
-      if (program?.competitionDate) {
-        const diff = Math.ceil(
-          (new Date(program.competitionDate) - new Date()) /
-          (1000 * 60 * 60 * 24)
-        );
-        setCompetitionCountdown(diff > 0 ? diff : 0);
-      }
-
-      const currentWeek = team?.currentWeek;
-
-      program.blocks?.forEach(block => {
-        if (
-          currentWeek >= block.startWeek &&
-          currentWeek <= block.endWeek
-        ) {
-          setCurrentBlock(block);
-        }
-      });
-    };
-
-    loadProgram();
-
-  }, [team?.id, team?.currentWeek]);
+    return calculateTeamAnalytics(workouts, roster, 30);
+  }, [workouts, roster]);
 
   /* ================= ADVANCE WEEK ================= */
 
@@ -224,10 +234,11 @@ function Dashboard({ profile, team }) {
 
   /* ================= RENDER ================= */
 
-return (
-  <div className="dashboard-wrapper">
+  return (
+    <div className="dashboard-wrapper">
 
-      <div className="hero-header">
+      {/* ================= HERO HEADER (IMAGE ENABLED) ================= */}
+      <div className="hero-header" style={heroStyle}>
         <div className="hero-overlay">
           <h1>{team?.name || "Team Dashboard"}</h1>
           <p>
@@ -237,12 +248,6 @@ return (
           </p>
         </div>
       </div>
-
-      {competitionCountdown !== null && (
-        <div className="competition-banner">
-          Competition in <AnimatedStat value={competitionCountdown} /> days
-        </div>
-      )}
 
       <div className="dashboard-grid">
 
@@ -277,6 +282,46 @@ return (
           </div>
         </AnimatedCard>
 
+      </div>
+
+      {/* ================= NOTES FEED ================= */}
+
+      <div className="card" style={{ marginTop: 30 }}>
+        <h3>📢 Team Updates</h3>
+
+        {dashboardNotes.length === 0 && (
+          <div style={{ opacity: 0.6 }}>No updates yet.</div>
+        )}
+
+        {dashboardNotes.map(note => {
+
+          const date = note.createdAt?.seconds
+            ? new Date(note.createdAt.seconds * 1000)
+            : null;
+
+          const isTeam = note.visibility === "team";
+
+          return (
+            <div
+              key={note.id}
+              style={{
+                marginBottom: 15,
+                paddingBottom: 10,
+                borderBottom: "1px solid var(--border)"
+              }}
+            >
+              <div style={{ fontSize: 12, opacity: 0.6 }}>
+                {isTeam ? "📢 Team" : "👤 Personal"} —
+                {note.createdByName} —
+                {date?.toLocaleDateString()}
+              </div>
+
+              <div style={{ marginTop: 6 }}>
+                {note.text}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {isCoach && (
