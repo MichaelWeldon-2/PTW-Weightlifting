@@ -6,7 +6,10 @@ function Account({ profile }) {
   return (
     <div>
       <h2>Account</h2>
-
+  <HeroHeader
+  title="Account"
+  image={team?.pageImages?.account}
+/>
       <div className="card">
         <p><strong>Name:</strong> {profile?.displayName}</p>
         <p><strong>Role:</strong> {profile?.role}</p>
@@ -20,10 +23,6 @@ function Account({ profile }) {
       </button>
     </div>
   );
-  <HeroHeader
-  title="Account"
-  image={team?.pageImages?.account}
-/>
 }
 
 export default Account;

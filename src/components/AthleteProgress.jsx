@@ -192,7 +192,10 @@ const sortedHistory = useMemo(() => {
 
   return (
     <div className="card">
-
+<HeroHeader
+    title="Progress"
+    image={team?.pageImages?.progress}
+  />
       <h2>📈 Athlete Performance Center</h2>
 
       {isCoach && (
@@ -319,8 +322,4 @@ function Metric({ label, value }) {
       <div className="metric-value">{value}</div>
     </div>
   );
-  <HeroHeader
-    title="Progress"
-    image={team?.pageImages?.progress}
-  />
 }

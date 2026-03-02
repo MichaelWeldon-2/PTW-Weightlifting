@@ -143,7 +143,10 @@ export default function Notes({ profile, team }) {
 
   return (
     <div className="card">
-
+ <HeroHeader
+  title="Notes"
+  image={team?.pageImages?.notes}
+/>
       <h2>📝 Notes</h2>
 
       {/* ================= COACH FILTER ================= */}
@@ -214,8 +217,4 @@ export default function Notes({ profile, team }) {
 
     </div>
   );
-  <HeroHeader
-  title="Notes"
-  image={team?.pageImages?.notes}
-/>
 }

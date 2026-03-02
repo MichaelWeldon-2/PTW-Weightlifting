@@ -167,7 +167,10 @@ export default function Workouts({ profile, team }) {
 
   return (
     <div className="workout-wrapper">
-
+<HeroHeader
+  title="Workouts"
+  image={team?.pageImages?.workouts}
+/>
       <div className="hero-header">
         <h2>{athleteName}</h2>
       </div>
@@ -261,8 +264,4 @@ export default function Workouts({ profile, team }) {
       </div>
     </div>
   );
-<HeroHeader
-  title="Workouts"
-  image={team?.pageImages?.workouts}
-/>
 }

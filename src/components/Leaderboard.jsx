@@ -159,7 +159,10 @@ const currentSeasonIndex = useMemo(() => {
 
   return (
     <div className="card">
-
+<HeroHeader
+  title="Leaderboard"
+  image={team?.pageImages?.leaderboard}
+/>
       <h2>Leaderboard</h2>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -233,8 +236,4 @@ const currentSeasonIndex = useMemo(() => {
 
     </div>
   );
-  <HeroHeader
-  title="Leaderboard"
-  image={team?.pageImages?.leaderboard}
-/>
 }

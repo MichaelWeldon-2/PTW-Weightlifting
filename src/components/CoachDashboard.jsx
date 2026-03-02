@@ -69,7 +69,10 @@ export default function CoachDashboard({ team }) {
 
   return (
     <div className="card">
-
+  <HeroHeader
+  title="Coach Dashboard"
+  image={team?.pageImages?.coach}
+/>
       <h2>🧠 Coach Intelligence Dashboard</h2>
 
       <select
@@ -146,8 +149,4 @@ function Metric({ label, value }) {
       <div className="metric-value">{value}</div>
     </div>
   );
-  <HeroHeader
-  title="Coach Dashboard"
-  image={team?.pageImages?.coach}
-/>
 }
