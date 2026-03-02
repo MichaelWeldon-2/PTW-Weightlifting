@@ -95,46 +95,82 @@ export default function Workouts({ profile, team }) {
     load();
   }, [selectedRosterId]);
 
-  /* ================= CURRENT MAX ================= */
-  const currentMax = {
-    Bench: liveMaxes?.benchMax || 0,
-    Squat: liveMaxes?.squatMax || 0,
-    PowerClean: liveMaxes?.powerCleanMax || 0
-  }[exercise] || 0;
-
-  /* ================= CALCULATED SETS (RESTORED) ================= */
+  /* ================= CALCULATED SETS ================= */
   const calculatedSets = useMemo(() => {
 
-  const currentMax = {
-    Bench: liveMaxes?.benchMax || 0,
-    Squat: liveMaxes?.squatMax || 0,
-    PowerClean: liveMaxes?.powerCleanMax || 0
-  }[exercise] || 0;
+    const currentMax = {
+      Bench: liveMaxes?.benchMax || 0,
+      Squat: liveMaxes?.squatMax || 0,
+      PowerClean: liveMaxes?.powerCleanMax || 0
+    }[exercise] || 0;
 
-  let baseWeight;
+    let baseWeight;
 
-  if (exercise === "Squat" && selectionValue !== "Max") {
-    const percent = Number(selectionValue) / 100;
-    baseWeight = Math.round((percent * currentMax) / 5) * 5;
-  } else {
-    baseWeight = Number(selectedWeight);
-  }
+    if (exercise === "Squat" && selectionValue !== "Max") {
+      const percent = Number(selectionValue) / 100;
+      const rawWeight = percent * currentMax;
+      baseWeight = Math.round(rawWeight / 5) * 5; // round to nearest 5
+    } else {
+      baseWeight = Number(selectedWeight);
+    }
 
-  let template;
+    let template;
 
-  if (selectionValue === "Max") {
-    template = teamTemplate?.Max;
-  } else if (exercise === "Squat") {
-    template = teamTemplate?.Percentage;
-  } else {
-    template = teamTemplate?.[`Box${selectionValue}`];
-  }
+    if (selectionValue === "Max") {
+      template = teamTemplate?.Max;
+    } else if (exercise === "Squat") {
+      template = teamTemplate?.Percentage;
+    } else {
+      template = teamTemplate?.[`Box${selectionValue}`];
+    }
 
-  if (!Array.isArray(template)) return [];
+    if (!Array.isArray(template)) return [];
 
-  return calculateSets(template, baseWeight);
+    return calculateSets(template, baseWeight);
 
-}, [exercise, selectionValue, selectedWeight, liveMaxes, teamTemplate]);
+  }, [exercise, selectionValue, selectedWeight, liveMaxes, teamTemplate]);
+
+  /* ================= SAVE WORKOUT ================= */
+  const saveWorkout = async () => {
+
+    if (!selectedRosterId) return alert("Select athlete.");
+
+    let finalWeight = Number(selectedWeight);
+
+    if (exercise === "Squat" && selectionValue !== "Max") {
+      const percent = Number(selectionValue) / 100;
+      const rawWeight = percent * (liveMaxes?.squatMax || 0);
+      finalWeight = Math.round(rawWeight / 5) * 5;
+    }
+
+    await addDoc(collection(db, "workouts"), {
+      teamId: team.id,
+      athleteRosterId: selectedRosterId,
+      athleteDisplayName:
+        roster.find(r => r.id === selectedRosterId)?.displayName,
+      exercise,
+      weight: finalWeight,
+      selectionValue,
+      result,
+      overrideReason:
+        result === "Override" ? overrideReason : null,
+      createdAt: serverTimestamp()
+    });
+
+    setSuccessFlash(true);
+    setTimeout(() => setSuccessFlash(false), 1000);
+    setOverrideReason("");
+  };
+
+  const athleteName =
+    roster.find(r => r.id === selectedRosterId)?.displayName || "Workout";
+
+  return (
+    <div className="workout-wrapper">
+
+      <div className="hero-header">
+        <h2>{athleteName}</h2>
+      </div>
 
       {/* ================= CURRENT WORKOUT ================= */}
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>
@@ -161,7 +197,6 @@ export default function Workouts({ profile, team }) {
           <option>PowerClean</option>
         </select>
 
-        {/* BOX / PERCENTAGE SELECTOR */}
         {exercise === "Squat" ? (
           <select
             value={selectionValue}
@@ -184,7 +219,6 @@ export default function Workouts({ profile, team }) {
           </select>
         )}
 
-        {/* WEIGHT SELECTOR (NOT USED FOR % SQUATS) */}
         {exercise !== "Squat" && (
           <select
             value={selectedWeight}
@@ -196,7 +230,6 @@ export default function Workouts({ profile, team }) {
           </select>
         )}
 
-        {/* ================= PREVIEW SETS (RESTORED) ================= */}
         <div style={{ marginTop: 20 }}>
           {calculatedSets.map((set, i) => (
             <div key={i}>
