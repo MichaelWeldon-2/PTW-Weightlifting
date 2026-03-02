@@ -1,7 +1,7 @@
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import HeroHeader from "../components/HeroHeader";
-function Account({ profile }) {
+function Account({ profile,team }) {
 
   return (
     <div>
@@ -10,9 +10,9 @@ function Account({ profile }) {
         <p><strong>Name:</strong> {profile?.displayName}</p>
         <p><strong>Role:</strong> {profile?.role}</p>
       </div>
- <HeroHeader
+<HeroHeader
   title="Account"
-  image={team?.pageImages?.account}
+  image={team?.pageImages?.account || "/images/default-account.jpg"}
 />
       <button
         className="btn-primary"
