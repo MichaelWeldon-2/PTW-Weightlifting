@@ -133,7 +133,6 @@ export default function Workouts({ profile, team }) {
 
   }, [exercise, selectionValue, selectedWeight, liveMaxes, teamTemplate]);
 
-  /* ================= SAVE WORKOUT ================= */
 /* ================= SAVE WORKOUT ================= */
 const saveWorkout = async () => {
 
@@ -180,7 +179,6 @@ const saveWorkout = async () => {
     if (field) {
       const currentMax = currentData[field] || 0;
 
-      // Only update if new max is greater
       if (finalWeight > currentMax) {
         await setDoc(
           maxRef,
@@ -223,11 +221,6 @@ const saveWorkout = async () => {
         title="Workouts"
         image={team?.pageImages?.workouts}
       />
-
-      <div className="hero-header">
-        <h2>{athleteName}</h2>
-      </div>
-
       {/* ================= LAST RECORDED LIFTS ================= */}
       {selectedRosterId && (
         <div className="card workout-card" style={{ marginBottom: 20 }}>
