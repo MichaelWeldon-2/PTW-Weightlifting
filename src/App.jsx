@@ -35,7 +35,7 @@ import Account from "./components/Account";
 import Roster from "./pages/Roster";
 import Notes from "./pages/Notes";
 import "./App.css";
-import DailyProgress from "./DailyProgress";
+import DailyProgress from "./components/DailyProgress";
 /* ================= NAV COMPONENTS ================= */
 
 function NavItem({ icon, label, active, onClick }) {
