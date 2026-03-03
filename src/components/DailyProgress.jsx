@@ -72,66 +72,55 @@ export default function DailyProgress({ profile, team }) {
     return () => unsub();
   }, [selectedRosterId]);
 
-  /* ================= LOAD WORKOUTS ================= */
-  useEffect(() => {
-    if (!selectedRosterId) return;
+ /* ================= LOAD WORKOUTS ================= */
+useEffect(() => {
+  if (!selectedRosterId) return;
 
-    // ----- ALL MODE (most recent of each lift) -----
+  const q = query(
+    collection(db, "workouts"),
+    where("athleteRosterId", "==", selectedRosterId),
+    orderBy("createdAt", "desc"),
+    limit(100)
+  );
+
+  const unsub = onSnapshot(q, snap => {
+    const allData = snap.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
+
+    // ---------- ALL MODE ----------
     if (selectedLift === "All") {
 
-      const fetchLatestPerLift = async () => {
+      const latestPerLift = {};
 
-        const lifts = ["Bench", "PowerClean", "Squat"];
-        const results = [];
-
-        for (const lift of lifts) {
-          const q = query(
-            collection(db, "workouts"),
-            where("athleteRosterId", "==", selectedRosterId),
-            where("exercise", "==", lift),
-            orderBy("createdAt", "desc"),
-            limit(1)
-          );
-
-          const snap = await getDocs(q);
-
-          snap.forEach(doc => {
-            results.push({ id: doc.id, ...doc.data() });
-          });
+      for (const workout of allData) {
+        if (!latestPerLift[workout.exercise]) {
+          latestPerLift[workout.exercise] = workout;
         }
+      }
 
-        // sort by date ascending so line connects properly
-        results.sort((a, b) =>
+      const results = Object.values(latestPerLift)
+        .sort((a, b) =>
           (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)
         );
 
-        setWorkouts(results);
-      };
-
-      fetchLatestPerLift();
+      setWorkouts(results);
       return;
     }
 
-    // ----- SINGLE LIFT MODE -----
-    const q = query(
-      collection(db, "workouts"),
-      where("athleteRosterId", "==", selectedRosterId),
-      where("exercise", "==", selectedLift),
-      orderBy("createdAt", "desc"),
-      limit(25)
-    );
+    // ---------- SINGLE LIFT MODE ----------
+    const filtered = allData
+      .filter(w => w.exercise === selectedLift)
+      .slice(0, 25)
+      .reverse();
 
-    const unsub = onSnapshot(q, snap => {
-      const data = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .reverse();
+    setWorkouts(filtered);
+  });
 
-      setWorkouts(data);
-    });
+  return () => unsub();
 
-    return () => unsub();
-
-  }, [selectedRosterId, selectedLift]);
+}, [selectedRosterId, selectedLift]);
 
   /* ================= BUILD GRAPH DATA ================= */
   const chartData = useMemo(() => {
