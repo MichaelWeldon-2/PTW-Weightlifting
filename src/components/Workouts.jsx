@@ -16,6 +16,7 @@ import { defaultTemplate } from "../utils/boxTemplates";
 import { calculateSets } from "../utils/calculateSets";
 import HeroHeader from "./HeroHeader";
 import { setDoc } from "firebase/firestore";
+
 export default function Workouts({ profile, team }) {
 
   const [roster, setRoster] = useState([]);
@@ -101,21 +102,7 @@ export default function Workouts({ profile, team }) {
   /* ================= CALCULATED SETS ================= */
   const calculatedSets = useMemo(() => {
 
-    const currentMax = {
-      Bench: liveMaxes?.benchMax || 0,
-      Squat: liveMaxes?.squatMax || 0,
-      PowerClean: liveMaxes?.powerCleanMax || 0
-    }[exercise] || 0;
-
-    let baseWeight;
-
-    if (exercise === "Squat" && selectionValue !== "Max") {
-      const percent = Number(selectionValue) / 100;
-      const rawWeight = percent * currentMax;
-      baseWeight = Math.round(rawWeight / 5) * 5;
-    } else {
-      baseWeight = Number(selectedWeight);
-    }
+    let baseWeight = Number(selectedWeight);
 
     let template;
 
@@ -131,68 +118,61 @@ export default function Workouts({ profile, team }) {
 
     return calculateSets(template, baseWeight);
 
-  }, [exercise, selectionValue, selectedWeight, liveMaxes, teamTemplate]);
+  }, [exercise, selectionValue, selectedWeight, teamTemplate]);
 
-/* ================= SAVE WORKOUT ================= */
-const saveWorkout = async () => {
+  /* ================= SAVE WORKOUT ================= */
+  const saveWorkout = async () => {
 
-  if (!selectedRosterId) return alert("Select athlete.");
+    if (!selectedRosterId) return alert("Select athlete.");
 
-  let finalWeight = Number(selectedWeight);
+    let finalWeight = Number(selectedWeight);
 
-  if (exercise === "Squat" && selectionValue !== "Max") {
-    const percent = Number(selectionValue) / 100;
-    const rawWeight = percent * (liveMaxes?.squatMax || 0);
-    finalWeight = Math.round(rawWeight / 5) * 5;
-  }
+    await addDoc(collection(db, "workouts"), {
+      teamId: team.id,
+      athleteRosterId: selectedRosterId,
+      athleteDisplayName:
+        roster.find(r => r.id === selectedRosterId)?.displayName,
+      exercise,
+      weight: finalWeight,
+      selectionValue,
+      result,
+      overrideReason:
+        result === "Override" ? overrideReason : null,
+      createdAt: serverTimestamp()
+    });
 
-  // Save workout first
-  await addDoc(collection(db, "workouts"), {
-    teamId: team.id,
-    athleteRosterId: selectedRosterId,
-    athleteDisplayName:
-      roster.find(r => r.id === selectedRosterId)?.displayName,
-    exercise,
-    weight: finalWeight,
-    selectionValue,
-    result,
-    overrideReason:
-      result === "Override" ? overrideReason : null,
-    createdAt: serverTimestamp()
-  });
+    /* ================= AUTO UPDATE CURRENT MAX ================= */
+    if (selectionValue === "Max" && result === "Pass") {
 
-  /* ================= AUTO UPDATE CURRENT MAX ================= */
-  if (selectionValue === "Max" && result === "Pass") {
+      const maxRef = doc(db, "seasonMaxesCurrent", selectedRosterId);
+      const snap = await getDoc(maxRef);
+      const currentData = snap.exists() ? snap.data() : {};
 
-    const maxRef = doc(db, "seasonMaxesCurrent", selectedRosterId);
-    const snap = await getDoc(maxRef);
-    const currentData = snap.exists() ? snap.data() : {};
+      const fieldMap = {
+        Bench: "benchMax",
+        Squat: "squatMax",
+        PowerClean: "powerCleanMax"
+      };
 
-    const fieldMap = {
-      Bench: "benchMax",
-      Squat: "squatMax",
-      PowerClean: "powerCleanMax"
-    };
+      const field = fieldMap[exercise];
 
-    const field = fieldMap[exercise];
+      if (field) {
+        const currentMax = currentData[field] || 0;
 
-    if (field) {
-      const currentMax = currentData[field] || 0;
-
-      if (finalWeight > currentMax) {
-        await setDoc(
-          maxRef,
-          { [field]: finalWeight },
-          { merge: true }
-        );
+        if (finalWeight > currentMax) {
+          await setDoc(
+            maxRef,
+            { [field]: finalWeight },
+            { merge: true }
+          );
+        }
       }
     }
-  }
 
-  setSuccessFlash(true);
-  setTimeout(() => setSuccessFlash(false), 1000);
-  setOverrideReason("");
-};
+    setSuccessFlash(true);
+    setTimeout(() => setSuccessFlash(false), 1000);
+    setOverrideReason("");
+  };
 
   const athleteName =
     roster.find(r => r.id === selectedRosterId)?.displayName || "Workout";
@@ -221,6 +201,7 @@ const saveWorkout = async () => {
         title="Workouts"
         image={team?.pageImages?.workouts}
       />
+
       {/* ================= LAST RECORDED LIFTS ================= */}
       {selectedRosterId && (
         <div className="card workout-card" style={{ marginBottom: 20 }}>
@@ -305,16 +286,15 @@ const saveWorkout = async () => {
           </select>
         )}
 
-        {exercise !== "Squat" && (
-          <select
-            value={selectedWeight}
-            onChange={e => setSelectedWeight(Number(e.target.value))}
-          >
-            {Array.from({ length: 60 }, (_, i) => 135 + i * 5).map(w => (
-              <option key={w} value={w}>{w} lbs</option>
-            ))}
-          </select>
-        )}
+        {/* Weight dropdown now appears for ALL exercises */}
+        <select
+          value={selectedWeight}
+          onChange={e => setSelectedWeight(Number(e.target.value))}
+        >
+          {Array.from({ length: 80 }, (_, i) => 95 + i * 5).map(w => (
+            <option key={w} value={w}>{w} lbs</option>
+          ))}
+        </select>
 
         <div style={{ marginTop: 20 }}>
           {calculatedSets.map((set, i) => (
