@@ -25,7 +25,7 @@ export default function Workouts({ profile, team }) {
   const [workouts, setWorkouts] = useState([]);
 
   const [exercise, setExercise] = useState("Bench");
-  const [selectionValue, setSelectionValue] = useState("1");
+  const [selectionValue, setSelectionValue] = useState("");
   const [selectedWeight, setSelectedWeight] = useState(135);
   const [result, setResult] = useState("Pass");
   const [overrideReason, setOverrideReason] = useState("");
@@ -34,6 +34,14 @@ export default function Workouts({ profile, team }) {
   const [successFlash, setSuccessFlash] = useState(false);
 
   const isCoach = profile?.role === "coach";
+  /* ================= SMART RESET SELECTION ================= */
+useEffect(() => {
+  if (exercise === "Squat") {
+    setSelectionValue("25"); // default squat %
+  } else {
+    setSelectionValue("1"); // default box 1
+  }
+}, [exercise]);
 
   /* ================= LOAD ROSTER ================= */
   useEffect(() => {
