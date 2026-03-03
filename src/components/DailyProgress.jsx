@@ -4,6 +4,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   doc
 } from "firebase/firestore";
@@ -15,7 +16,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   CartesianGrid
 } from "recharts";
@@ -24,6 +24,7 @@ export default function DailyProgress({ profile, team }) {
 
   const [roster, setRoster] = useState([]);
   const [selectedRosterId, setSelectedRosterId] = useState("");
+  const [selectedLift, setSelectedLift] = useState("Bench");
   const [workouts, setWorkouts] = useState([]);
   const [liveMaxes, setLiveMaxes] = useState({});
 
@@ -46,31 +47,9 @@ export default function DailyProgress({ profile, team }) {
   /* ================= AUTO SELECT SELF ================= */
   useEffect(() => {
     if (!profile || isCoach) return;
-
     const match = roster.find(r => r.linkedUid === profile.uid);
     if (match) setSelectedRosterId(match.id);
-
   }, [profile, roster, isCoach]);
-
-  /* ================= LOAD WORKOUTS ================= */
-  useEffect(() => {
-    if (!selectedRosterId) return;
-
-    const q = query(
-      collection(db, "workouts"),
-      where("athleteRosterId", "==", selectedRosterId),
-      orderBy("createdAt", "asc")
-    );
-
-    const unsub = onSnapshot(q, snap => {
-      setWorkouts(snap.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      })));
-    });
-
-    return () => unsub();
-  }, [selectedRosterId]);
 
   /* ================= LOAD LIVE MAXES ================= */
   useEffect(() => {
@@ -86,39 +65,47 @@ export default function DailyProgress({ profile, team }) {
     return () => unsub();
   }, [selectedRosterId]);
 
-  /* ================= CLEAN CHART DATA ================= */
-  const chartData = useMemo(() => {
+  /* ================= LOAD LAST 25 LIFTS FOR SELECTED EXERCISE ================= */
+  useEffect(() => {
+    if (!selectedRosterId) return;
 
-    const dataMap = {};
+    const q = query(
+      collection(db, "workouts"),
+      where("athleteRosterId", "==", selectedRosterId),
+      where("exercise", "==", selectedLift),
+      orderBy("createdAt", "desc"),
+      limit(25)
+    );
 
-    workouts.forEach(w => {
-      if (!w.createdAt?.seconds) return;
+    const unsub = onSnapshot(q, snap => {
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .reverse(); // reverse so graph goes oldest → newest
 
-      const date = new Date(w.createdAt.seconds * 1000)
-        .toLocaleDateString();
-
-      if (!dataMap[date]) {
-        dataMap[date] = {
-          date,
-          Bench: null,
-          Squat: null,
-          PowerClean: null,
-          BenchResult: null,
-          SquatResult: null,
-          PowerCleanResult: null
-        };
-      }
-
-      dataMap[date][w.exercise] = w.weight;
-      dataMap[date][`${w.exercise}Result`] = w.result;
+      setWorkouts(data);
     });
 
-    return Object.values(dataMap);
+    return () => unsub();
+  }, [selectedRosterId, selectedLift]);
 
+  /* ================= BUILD GRAPH DATA ================= */
+  const chartData = useMemo(() => {
+    return workouts.map((w, index) => ({
+      attempt: index + 1,
+      weight: w.weight,
+      result: w.result,
+      selection: w.selectionValue
+    }));
   }, [workouts]);
 
   const athleteName =
     roster.find(r => r.id === selectedRosterId)?.displayName || "Daily Progress";
+
+  const liftColors = {
+    Bench: "#2563eb",
+    PowerClean: "#facc15",   // Yellow
+    Squat: "#9333ea"         // Purple
+  };
 
   return (
     <div className="workout-wrapper">
@@ -136,22 +123,15 @@ export default function DailyProgress({ profile, team }) {
       {selectedRosterId && (
         <div className="card workout-card" style={{ marginBottom: 20 }}>
           <h3>Current Maxes</h3>
-
-          <div style={{
-            display: "flex",
-            justifyContent: "space-between",
-            textAlign: "center"
-          }}>
+          <div style={{ display: "flex", justifyContent: "space-between", textAlign: "center" }}>
             <div>
               <strong>Bench</strong>
               <div>{liveMaxes?.benchMax || 0} lbs</div>
             </div>
-
             <div>
               <strong>Squat</strong>
               <div>{liveMaxes?.squatMax || 0} lbs</div>
             </div>
-
             <div>
               <strong>Power Clean</strong>
               <div>{liveMaxes?.powerCleanMax || 0} lbs</div>
@@ -160,17 +140,17 @@ export default function DailyProgress({ profile, team }) {
         </div>
       )}
 
-      {/* ================= GRAPH CARD ================= */}
+      {/* ================= GRAPH ================= */}
       <div className="card workout-card">
 
-        <h3>Workout Performance Trend</h3>
+        <h3>Last 25 {selectedLift} Workouts</h3>
 
         {/* Coach Selector */}
         {isCoach && (
           <select
             value={selectedRosterId}
             onChange={e => setSelectedRosterId(e.target.value)}
-            style={{ marginBottom: 20 }}
+            style={{ marginBottom: 15 }}
           >
             <option value="">Select Athlete</option>
             {roster.map(r => (
@@ -181,87 +161,53 @@ export default function DailyProgress({ profile, team }) {
           </select>
         )}
 
+        {/* Lift Selector */}
+        <select
+          value={selectedLift}
+          onChange={e => setSelectedLift(e.target.value)}
+          style={{ marginBottom: 20 }}
+        >
+          <option value="Bench">Bench</option>
+          <option value="PowerClean">Power Clean</option>
+          <option value="Squat">Squat</option>
+        </select>
+
         {!selectedRosterId ? (
           <div>Select an athlete to view data.</div>
         ) : (
-          <ResponsiveContainer width="100%" height={380}>
+          <ResponsiveContainer width="100%" height={360}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
+              <XAxis dataKey="attempt" />
               <YAxis />
-              <Tooltip />
-              <Legend />
-
-              {/* BENCH */}
-              <Line
-                type="monotone"
-                dataKey="Bench"
-                stroke="#2563eb"
-                strokeWidth={3}
-                connectNulls
-                dot={({ cx, cy, payload }) => {
-                  if (payload.Bench == null) return null;
-                  return (
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={5}
-                      fill={
-                        payload.BenchResult === "Pass"
-                          ? "#22c55e"
-                          : "#ef4444"
-                      }
-                    />
-                  );
+              <Tooltip
+                formatter={(value, name, props) => {
+                  const selection = props.payload.selection;
+                  if (selectedLift === "Squat") {
+                    return [`${value} lbs (${selection}%)`, "Weight"];
+                  }
+                  return selection === "Max"
+                    ? [`${value} lbs (Max)`, "Weight"]
+                    : [`${value} lbs (Box ${selection})`, "Weight"];
                 }}
               />
 
-              {/* SQUAT */}
+              {/* BLACK CONNECTING LINE */}
               <Line
                 type="monotone"
-                dataKey="Squat"
-                stroke="#dc2626"
+                dataKey="weight"
+                stroke="#000000"
                 strokeWidth={3}
-                connectNulls
-                dot={({ cx, cy, payload }) => {
-                  if (payload.Squat == null) return null;
-                  return (
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={5}
-                      fill={
-                        payload.SquatResult === "Pass"
-                          ? "#22c55e"
-                          : "#ef4444"
-                      }
-                    />
-                  );
-                }}
-              />
-
-              {/* POWER CLEAN */}
-              <Line
-                type="monotone"
-                dataKey="PowerClean"
-                stroke="#16a34a"
-                strokeWidth={3}
-                connectNulls
-                dot={({ cx, cy, payload }) => {
-                  if (payload.PowerClean == null) return null;
-                  return (
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r={5}
-                      fill={
-                        payload.PowerCleanResult === "Pass"
-                          ? "#22c55e"
-                          : "#ef4444"
-                      }
-                    />
-                  );
-                }}
+                dot={({ cx, cy, payload }) => (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={6}
+                    fill={payload.result === "Pass" ? "#22c55e" : "#ef4444"}
+                    stroke={liftColors[selectedLift]}
+                    strokeWidth={2}
+                  />
+                )}
               />
 
             </LineChart>
