@@ -160,14 +160,10 @@ useEffect(() => {
         image={team?.pageImages?.progress}
       />
 
-      <div className="hero-header">
-        <h2>{athleteName}</h2>
-      </div>
-
       {/* ================= LIVE MAX CARD ================= */}
       {selectedRosterId && (
         <div className="card workout-card" style={{ marginBottom: 20 }}>
-          <h3>Current Maxes</h3>
+          <h3>{athleteName}-Current Maxes</h3>
           <div style={{ display: "flex", justifyContent: "space-between", textAlign: "center" }}>
             <div><strong>Bench</strong><div>{liveMaxes?.benchMax || 0} lbs</div></div>
             <div><strong>Squat</strong><div>{liveMaxes?.squatMax || 0} lbs</div></div>

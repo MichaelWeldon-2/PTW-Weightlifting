@@ -45,7 +45,6 @@ export default function WorkoutLogger({ team, profile }) {
     let q;
 
     if (isCoach) {
-      // Coach sees all OR filtered athlete
       if (selectedAthlete) {
         q = query(
           collection(db, "workouts"),
@@ -63,7 +62,6 @@ export default function WorkoutLogger({ team, profile }) {
         );
       }
     } else {
-      // Athlete sees only theirs
       q = query(
         collection(db, "workouts"),
         where("teamId", "==", team.id),
@@ -92,7 +90,7 @@ export default function WorkoutLogger({ team, profile }) {
 
     if (!workouts.length) return [];
 
-    const prMap = {}; // highest weight per athlete + exercise
+    const prMap = {};
 
     return workouts.map(w => {
 
@@ -108,6 +106,32 @@ export default function WorkoutLogger({ team, profile }) {
     });
 
   }, [workouts]);
+
+  /* ================= FORMAT SELECTION ================= */
+
+  const formatSelection = (w) => {
+    if (w.selectionValue === "Max") return "Max Attempt";
+
+    if (w.exercise === "Squat") {
+      return `${w.selectionValue}%`;
+    }
+
+    return `Box ${w.selectionValue}`;
+  };
+
+  const formatExpandedSelection = (w) => {
+    if (!w.selectionValue) return "-";
+
+    if (w.exercise === "Squat") {
+      return w.selectionValue === "Max"
+        ? "Max"
+        : `${w.selectionValue}%`;
+    }
+
+    return w.selectionValue === "Max"
+      ? "Max"
+      : `Box ${w.selectionValue}`;
+  };
 
   /* ================= UI ================= */
 
@@ -153,9 +177,7 @@ export default function WorkoutLogger({ team, profile }) {
           >
             <strong>
               {w.exercise} — {w.weight} lbs — 
-              {w.selectionValue === "Max"
-                ? "Max Attempt"
-                : `Box ${w.selectionValue}`} — 
+              {formatSelection(w)} — 
               {w.result}
               {w.isPR && " 🏆"}
             </strong>
@@ -172,7 +194,7 @@ export default function WorkoutLogger({ team, profile }) {
 
             {isOpen && (
               <div style={{ marginTop: 10 }}>
-                <div>Box: {w.selectionValue || "-"}</div>
+                <div>Selection: {formatExpandedSelection(w)}</div>
                 <div>Override Reason: {w.overrideReason || "-"}</div>
               </div>
             )}
