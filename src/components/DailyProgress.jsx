@@ -6,7 +6,8 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  doc
+  doc,
+  getDocs
 } from "firebase/firestore";
 import { db } from "../firebase";
 import HeroHeader from "./HeroHeader";
@@ -24,11 +25,17 @@ export default function DailyProgress({ profile, team }) {
 
   const [roster, setRoster] = useState([]);
   const [selectedRosterId, setSelectedRosterId] = useState("");
-  const [selectedLift, setSelectedLift] = useState("Bench");
+  const [selectedLift, setSelectedLift] = useState("All");
   const [workouts, setWorkouts] = useState([]);
   const [liveMaxes, setLiveMaxes] = useState({});
 
   const isCoach = profile?.role === "coach";
+
+  const liftColors = {
+    Bench: "#2563eb",
+    PowerClean: "#facc15",
+    Squat: "#9333ea"
+  };
 
   /* ================= LOAD ROSTER ================= */
   useEffect(() => {
@@ -65,10 +72,47 @@ export default function DailyProgress({ profile, team }) {
     return () => unsub();
   }, [selectedRosterId]);
 
-  /* ================= LOAD LAST 25 LIFTS FOR SELECTED EXERCISE ================= */
+  /* ================= LOAD WORKOUTS ================= */
   useEffect(() => {
     if (!selectedRosterId) return;
 
+    // ----- ALL MODE (most recent of each lift) -----
+    if (selectedLift === "All") {
+
+      const fetchLatestPerLift = async () => {
+
+        const lifts = ["Bench", "PowerClean", "Squat"];
+        const results = [];
+
+        for (const lift of lifts) {
+          const q = query(
+            collection(db, "workouts"),
+            where("athleteRosterId", "==", selectedRosterId),
+            where("exercise", "==", lift),
+            orderBy("createdAt", "desc"),
+            limit(1)
+          );
+
+          const snap = await getDocs(q);
+
+          snap.forEach(doc => {
+            results.push({ id: doc.id, ...doc.data() });
+          });
+        }
+
+        // sort by date ascending so line connects properly
+        results.sort((a, b) =>
+          (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)
+        );
+
+        setWorkouts(results);
+      };
+
+      fetchLatestPerLift();
+      return;
+    }
+
+    // ----- SINGLE LIFT MODE -----
     const q = query(
       collection(db, "workouts"),
       where("athleteRosterId", "==", selectedRosterId),
@@ -80,32 +124,44 @@ export default function DailyProgress({ profile, team }) {
     const unsub = onSnapshot(q, snap => {
       const data = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .reverse(); // reverse so graph goes oldest → newest
+        .reverse();
 
       setWorkouts(data);
     });
 
     return () => unsub();
+
   }, [selectedRosterId, selectedLift]);
 
   /* ================= BUILD GRAPH DATA ================= */
   const chartData = useMemo(() => {
+
+    if (selectedLift === "All") {
+      return workouts.map((w, index) => ({
+        label: w.exercise,
+        weight: w.weight,
+        result: w.result,
+        exercise: w.exercise,
+        selection: w.selectionValue
+      }));
+    }
+
     return workouts.map((w, index) => ({
-      attempt: index + 1,
+      label: index + 1,
       weight: w.weight,
       result: w.result,
       selection: w.selectionValue
     }));
-  }, [workouts]);
+
+  }, [workouts, selectedLift]);
 
   const athleteName =
     roster.find(r => r.id === selectedRosterId)?.displayName || "Daily Progress";
 
-  const liftColors = {
-    Bench: "#2563eb",
-    PowerClean: "#facc15",   // Yellow
-    Squat: "#9333ea"         // Purple
-  };
+  const lineColor =
+    selectedLift === "All"
+      ? "#000000"
+      : liftColors[selectedLift];
 
   return (
     <div className="workout-wrapper">
@@ -124,18 +180,9 @@ export default function DailyProgress({ profile, team }) {
         <div className="card workout-card" style={{ marginBottom: 20 }}>
           <h3>Current Maxes</h3>
           <div style={{ display: "flex", justifyContent: "space-between", textAlign: "center" }}>
-            <div>
-              <strong>Bench</strong>
-              <div>{liveMaxes?.benchMax || 0} lbs</div>
-            </div>
-            <div>
-              <strong>Squat</strong>
-              <div>{liveMaxes?.squatMax || 0} lbs</div>
-            </div>
-            <div>
-              <strong>Power Clean</strong>
-              <div>{liveMaxes?.powerCleanMax || 0} lbs</div>
-            </div>
+            <div><strong>Bench</strong><div>{liveMaxes?.benchMax || 0} lbs</div></div>
+            <div><strong>Squat</strong><div>{liveMaxes?.squatMax || 0} lbs</div></div>
+            <div><strong>Power Clean</strong><div>{liveMaxes?.powerCleanMax || 0} lbs</div></div>
           </div>
         </div>
       )}
@@ -143,9 +190,12 @@ export default function DailyProgress({ profile, team }) {
       {/* ================= GRAPH ================= */}
       <div className="card workout-card">
 
-        <h3>Last 25 {selectedLift} Workouts</h3>
+        <h3>
+          {selectedLift === "All"
+            ? "Most Recent Workout Per Lift"
+            : `Last 25 ${selectedLift} Workouts`}
+        </h3>
 
-        {/* Coach Selector */}
         {isCoach && (
           <select
             value={selectedRosterId}
@@ -167,6 +217,7 @@ export default function DailyProgress({ profile, team }) {
           onChange={e => setSelectedLift(e.target.value)}
           style={{ marginBottom: 20 }}
         >
+          <option value="All">All</option>
           <option value="Bench">Bench</option>
           <option value="PowerClean">Power Clean</option>
           <option value="Squat">Squat</option>
@@ -175,28 +226,33 @@ export default function DailyProgress({ profile, team }) {
         {!selectedRosterId ? (
           <div>Select an athlete to view data.</div>
         ) : (
-          <ResponsiveContainer width="100%" height={360}>
+          <ResponsiveContainer width="100%" height={350}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="attempt" />
+              <XAxis dataKey="label" />
               <YAxis />
               <Tooltip
                 formatter={(value, name, props) => {
                   const selection = props.payload.selection;
+
+                  if (selectedLift === "All") {
+                    return [`${value} lbs`, props.payload.exercise];
+                  }
+
                   if (selectedLift === "Squat") {
                     return [`${value} lbs (${selection}%)`, "Weight"];
                   }
+
                   return selection === "Max"
                     ? [`${value} lbs (Max)`, "Weight"]
                     : [`${value} lbs (Box ${selection})`, "Weight"];
                 }}
               />
 
-              {/* BLACK CONNECTING LINE */}
               <Line
                 type="monotone"
                 dataKey="weight"
-                stroke="#000000"
+                stroke={lineColor}
                 strokeWidth={3}
                 dot={({ cx, cy, payload }) => (
                   <circle
@@ -204,7 +260,11 @@ export default function DailyProgress({ profile, team }) {
                     cy={cy}
                     r={6}
                     fill={payload.result === "Pass" ? "#22c55e" : "#ef4444"}
-                    stroke={liftColors[selectedLift]}
+                    stroke={
+                      selectedLift === "All"
+                        ? liftColors[payload.exercise]
+                        : liftColors[selectedLift]
+                    }
                     strokeWidth={2}
                   />
                 )}
