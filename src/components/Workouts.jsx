@@ -15,6 +15,7 @@ import { db } from "../firebase";
 import { defaultTemplate } from "../utils/boxTemplates";
 import { calculateSets } from "../utils/calculateSets";
 import HeroHeader from "./HeroHeader";
+import { setDoc } from "firebase/firestore";
 export default function Workouts({ profile, team }) {
 
   const [roster, setRoster] = useState([]);
@@ -76,7 +77,9 @@ export default function Workouts({ profile, team }) {
   const lastWorkoutByExercise = useMemo(() => {
     const map = {};
     workouts.forEach(w => {
-      if (!map[w.exercise]) map[w.exercise] = w;
+      if (!map[w.exercise]) {
+        map[w.exercise] = w;
+      }
     });
     return map;
   }, [workouts]);
@@ -109,7 +112,7 @@ export default function Workouts({ profile, team }) {
     if (exercise === "Squat" && selectionValue !== "Max") {
       const percent = Number(selectionValue) / 100;
       const rawWeight = percent * currentMax;
-      baseWeight = Math.round(rawWeight / 5) * 5; // round to nearest 5
+      baseWeight = Math.round(rawWeight / 5) * 5;
     } else {
       baseWeight = Number(selectedWeight);
     }
@@ -131,49 +134,136 @@ export default function Workouts({ profile, team }) {
   }, [exercise, selectionValue, selectedWeight, liveMaxes, teamTemplate]);
 
   /* ================= SAVE WORKOUT ================= */
-  const saveWorkout = async () => {
+/* ================= SAVE WORKOUT ================= */
+const saveWorkout = async () => {
 
-    if (!selectedRosterId) return alert("Select athlete.");
+  if (!selectedRosterId) return alert("Select athlete.");
 
-    let finalWeight = Number(selectedWeight);
+  let finalWeight = Number(selectedWeight);
 
-    if (exercise === "Squat" && selectionValue !== "Max") {
-      const percent = Number(selectionValue) / 100;
-      const rawWeight = percent * (liveMaxes?.squatMax || 0);
-      finalWeight = Math.round(rawWeight / 5) * 5;
+  if (exercise === "Squat" && selectionValue !== "Max") {
+    const percent = Number(selectionValue) / 100;
+    const rawWeight = percent * (liveMaxes?.squatMax || 0);
+    finalWeight = Math.round(rawWeight / 5) * 5;
+  }
+
+  // Save workout first
+  await addDoc(collection(db, "workouts"), {
+    teamId: team.id,
+    athleteRosterId: selectedRosterId,
+    athleteDisplayName:
+      roster.find(r => r.id === selectedRosterId)?.displayName,
+    exercise,
+    weight: finalWeight,
+    selectionValue,
+    result,
+    overrideReason:
+      result === "Override" ? overrideReason : null,
+    createdAt: serverTimestamp()
+  });
+
+  /* ================= AUTO UPDATE CURRENT MAX ================= */
+  if (selectionValue === "Max" && result === "Pass") {
+
+    const maxRef = doc(db, "seasonMaxesCurrent", selectedRosterId);
+    const snap = await getDoc(maxRef);
+    const currentData = snap.exists() ? snap.data() : {};
+
+    const fieldMap = {
+      Bench: "benchMax",
+      Squat: "squatMax",
+      PowerClean: "powerCleanMax"
+    };
+
+    const field = fieldMap[exercise];
+
+    if (field) {
+      const currentMax = currentData[field] || 0;
+
+      // Only update if new max is greater
+      if (finalWeight > currentMax) {
+        await setDoc(
+          maxRef,
+          { [field]: finalWeight },
+          { merge: true }
+        );
+      }
     }
+  }
 
-    await addDoc(collection(db, "workouts"), {
-      teamId: team.id,
-      athleteRosterId: selectedRosterId,
-      athleteDisplayName:
-        roster.find(r => r.id === selectedRosterId)?.displayName,
-      exercise,
-      weight: finalWeight,
-      selectionValue,
-      result,
-      overrideReason:
-        result === "Override" ? overrideReason : null,
-      createdAt: serverTimestamp()
-    });
-
-    setSuccessFlash(true);
-    setTimeout(() => setSuccessFlash(false), 1000);
-    setOverrideReason("");
-  };
+  setSuccessFlash(true);
+  setTimeout(() => setSuccessFlash(false), 1000);
+  setOverrideReason("");
+};
 
   const athleteName =
     roster.find(r => r.id === selectedRosterId)?.displayName || "Workout";
 
+  const formatExerciseName = (name) => {
+    if (name === "PowerClean") return "Power Clean";
+    return name;
+  };
+
+  const formatSelection = (lift) => {
+    if (!lift) return "";
+
+    if (lift.exercise === "Squat") {
+      if (lift.selectionValue === "Max") return "Max";
+      return `${lift.selectionValue}%`;
+    }
+
+    if (lift.selectionValue === "Max") return "Max";
+    return `Box ${lift.selectionValue}`;
+  };
+
   return (
     <div className="workout-wrapper">
-<HeroHeader
-  title="Workouts"
-  image={team?.pageImages?.workouts}
-/>
+
+      <HeroHeader
+        title="Workouts"
+        image={team?.pageImages?.workouts}
+      />
+
       <div className="hero-header">
         <h2>{athleteName}</h2>
       </div>
+
+      {/* ================= LAST RECORDED LIFTS ================= */}
+      {selectedRosterId && (
+        <div className="card workout-card" style={{ marginBottom: 20 }}>
+          <h3>Last Recorded Lifts</h3>
+
+          {["Bench", "Squat", "PowerClean"].map(liftName => {
+            const lift = lastWorkoutByExercise[liftName];
+
+            return (
+              <div key={liftName} style={{ marginBottom: 12 }}>
+                <strong>{formatExerciseName(liftName)}</strong>
+
+                {lift ? (
+                  <div>
+                    {lift.weight} lbs — {formatSelection(lift)} —{" "}
+                    <span
+                      style={{
+                        color:
+                          lift.result === "Pass"
+                            ? "#2ecc71"
+                            : lift.result === "Fail"
+                            ? "#e74c3c"
+                            : "#f39c12"
+                      }}
+                    >
+                      {lift.result}
+                    </span>
+                  </div>
+                ) : (
+                  <div>No record yet</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ================= CURRENT WORKOUT ================= */}
       <div className={`card workout-card ${successFlash ? "success-flash" : ""}`}>

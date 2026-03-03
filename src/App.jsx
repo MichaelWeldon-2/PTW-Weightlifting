@@ -35,7 +35,7 @@ import Account from "./components/Account";
 import Roster from "./pages/Roster";
 import Notes from "./pages/Notes";
 import "./App.css";
-
+import DailyProgress from "./DailyProgress";
 /* ================= NAV COMPONENTS ================= */
 
 function NavItem({ icon, label, active, onClick }) {
@@ -385,6 +385,7 @@ export default function App() {
           {activeTab === "workouts" && <Workouts profile={profile} team={activeTeam} />}
           {activeTab === "log" && <WorkoutLogger profile={profile} team={activeTeam} />}
           {activeTab === "progress" && <AthleteProgress profile={profile} team={activeTeam} />}
+          {activeTab === "dailyProgress" && <DailyProgress team={activeTeam} profile={profile} />}
           {activeTab === "leaderboard" && <Leaderboard profile={profile} team={activeTeam} />}
           {activeTab === "coach" && profile.role==="coach" && <CoachDashboard team={activeTeam} />}
           {activeTab === "deep" && profile.role==="coach" && <AthleteDeepDive team={activeTeam} />}
@@ -406,6 +407,7 @@ export default function App() {
       <NavItem icon="🏠" label="Home" active={activeTab==="dashboard"} onClick={()=>setActiveTab("dashboard")} />
       <NavItem icon="💪" label="Workouts" active={activeTab==="workouts"} onClick={()=>setActiveTab("workouts")} />
       <NavItem icon="📈" label="Progress" active={activeTab==="progress"} onClick={()=>setActiveTab("progress")} />
+        <NavItem icon="📊" label="Daily Progress" active={activeTab==="dailyProgress"} onClick={()=>setActiveTab("dailyProgress")} />
       {profile.role === "coach" && (
         <NavItem icon="🧠" label="Coach" active={activeTab==="coach"} onClick={()=>setActiveTab("coach")} />
       )}
@@ -422,6 +424,7 @@ export default function App() {
           <DrawerItem label="Workouts" onClick={()=>setActiveTabAndClose("workouts")} />
            <DrawerItem label="Workout Log" onClick={()=>setActiveTabAndClose("log")} /> 
           <DrawerItem label="Progress" onClick={()=>setActiveTabAndClose("progress")} />
+            <DrawerItem label="Daily Progress" onClick={()=>setActiveTabAndClose("dailyProgress")} />
           <DrawerItem label="Leaderboard" onClick={()=>setActiveTabAndClose("leaderboard")} />
           <DrawerItem label="Notes" onClick={()=>setActiveTabAndClose("notes")} />
 
