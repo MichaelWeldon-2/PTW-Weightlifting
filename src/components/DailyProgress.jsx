@@ -29,6 +29,11 @@ export default function DailyProgress({ profile, team }) {
   const [workouts, setWorkouts] = useState([]);
   const [liveMaxes, setLiveMaxes] = useState({});
 
+  const total =
+    (liveMaxes?.benchMax || 0) +
+    (liveMaxes?.squatMax || 0) +
+    (liveMaxes?.powerCleanMax || 0);
+
   const isCoach = profile?.role === "coach";
 
   const liftColors = {
@@ -72,61 +77,58 @@ export default function DailyProgress({ profile, team }) {
     return () => unsub();
   }, [selectedRosterId]);
 
- /* ================= LOAD WORKOUTS ================= */
-useEffect(() => {
-  if (!selectedRosterId) return;
+  /* ================= LOAD WORKOUTS ================= */
+  useEffect(() => {
+    if (!selectedRosterId) return;
 
-  const q = query(
-    collection(db, "workouts"),
-    where("athleteRosterId", "==", selectedRosterId),
-    orderBy("createdAt", "desc"),
-    limit(100)
-  );
+    const q = query(
+      collection(db, "workouts"),
+      where("athleteRosterId", "==", selectedRosterId),
+      orderBy("createdAt", "desc"),
+      limit(100)
+    );
 
-  const unsub = onSnapshot(q, snap => {
-    const allData = snap.docs.map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
+    const unsub = onSnapshot(q, snap => {
+      const allData = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
 
-    // ---------- ALL MODE ----------
-    if (selectedLift === "All") {
+      if (selectedLift === "All") {
+        const latestPerLift = {};
 
-      const latestPerLift = {};
-
-      for (const workout of allData) {
-        if (!latestPerLift[workout.exercise]) {
-          latestPerLift[workout.exercise] = workout;
+        for (const workout of allData) {
+          if (!latestPerLift[workout.exercise]) {
+            latestPerLift[workout.exercise] = workout;
+          }
         }
+
+        const results = Object.values(latestPerLift)
+          .sort((a, b) =>
+            (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)
+          );
+
+        setWorkouts(results);
+        return;
       }
 
-      const results = Object.values(latestPerLift)
-        .sort((a, b) =>
-          (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)
-        );
+      const filtered = allData
+        .filter(w => w.exercise === selectedLift)
+        .slice(0, 25)
+        .reverse();
 
-      setWorkouts(results);
-      return;
-    }
+      setWorkouts(filtered);
+    });
 
-    // ---------- SINGLE LIFT MODE ----------
-    const filtered = allData
-      .filter(w => w.exercise === selectedLift)
-      .slice(0, 25)
-      .reverse();
+    return () => unsub();
 
-    setWorkouts(filtered);
-  });
-
-  return () => unsub();
-
-}, [selectedRosterId, selectedLift]);
+  }, [selectedRosterId, selectedLift]);
 
   /* ================= BUILD GRAPH DATA ================= */
   const chartData = useMemo(() => {
 
     if (selectedLift === "All") {
-      return workouts.map((w, index) => ({
+      return workouts.map((w) => ({
         label: w.exercise,
         weight: w.weight,
         result: w.result,
@@ -163,11 +165,34 @@ useEffect(() => {
       {/* ================= LIVE MAX CARD ================= */}
       {selectedRosterId && (
         <div className="card workout-card" style={{ marginBottom: 20 }}>
-          <h3>{athleteName}-Current Maxes</h3>
-          <div style={{ display: "flex", justifyContent: "space-between", textAlign: "center" }}>
-            <div><strong>Bench</strong><div>{liveMaxes?.benchMax || 0} lbs</div></div>
-            <div><strong>Squat</strong><div>{liveMaxes?.squatMax || 0} lbs</div></div>
-            <div><strong>Power Clean</strong><div>{liveMaxes?.powerCleanMax || 0} lbs</div></div>
+          <h3>{athleteName} - Current Maxes</h3>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              textAlign: "center"
+            }}
+          >
+            <div>
+              <strong>Bench</strong>
+              <div>{liveMaxes?.benchMax || 0} lbs</div>
+            </div>
+
+            <div>
+              <strong>Squat</strong>
+              <div>{liveMaxes?.squatMax || 0} lbs</div>
+            </div>
+
+            <div>
+              <strong>Power Clean</strong>
+              <div>{liveMaxes?.powerCleanMax || 0} lbs</div>
+            </div>
+
+            <div>
+              <strong>Total</strong>
+              <div>{total} lbs</div>
+            </div>
           </div>
         </div>
       )}
@@ -196,7 +221,6 @@ useEffect(() => {
           </select>
         )}
 
-        {/* Lift Selector */}
         <select
           value={selectedLift}
           onChange={e => setSelectedLift(e.target.value)}
@@ -254,7 +278,6 @@ useEffect(() => {
                   />
                 )}
               />
-
             </LineChart>
           </ResponsiveContainer>
         )}
