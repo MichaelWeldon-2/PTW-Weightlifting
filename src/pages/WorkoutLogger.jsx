@@ -18,7 +18,7 @@ export default function WorkoutLogger({ team, profile }) {
 
   const isCoach = profile?.role === "coach";
 
-  /* ================= LOAD ROSTER (FOR COACH FILTER) ================= */
+  /* ================= LOAD ROSTER ================= */
 
   useEffect(() => {
     if (!team?.id || !isCoach) return;
@@ -51,14 +51,14 @@ export default function WorkoutLogger({ team, profile }) {
           where("teamId", "==", team.id),
           where("athleteRosterId", "==", selectedAthlete),
           orderBy("createdAt", "desc"),
-          limit(30)
+          limit(50)
         );
       } else {
         q = query(
           collection(db, "workouts"),
           where("teamId", "==", team.id),
           orderBy("createdAt", "desc"),
-          limit(30)
+          limit(50)
         );
       }
     } else {
@@ -67,7 +67,7 @@ export default function WorkoutLogger({ team, profile }) {
         where("teamId", "==", team.id),
         where("athleteRosterId", "==", profile.athleteId),
         orderBy("createdAt", "desc"),
-        limit(30)
+        limit(50)
       );
     }
 
@@ -107,6 +107,32 @@ export default function WorkoutLogger({ team, profile }) {
 
   }, [workouts]);
 
+  /* ================= GROUP BY DATE ================= */
+
+  const groupedWorkouts = useMemo(() => {
+
+    const groups = {};
+
+    workoutsWithPR.forEach(w => {
+
+      const dateKey = w.createdAt?.seconds
+        ? new Date(w.createdAt.seconds * 1000).toLocaleDateString()
+        : "Unknown Date";
+
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+
+      groups[dateKey].push(w);
+
+    });
+
+    return Object.entries(groups).sort(
+      (a, b) => new Date(b[0]) - new Date(a[0])
+    );
+
+  }, [workoutsWithPR]);
+
   /* ================= FORMAT SELECTION ================= */
 
   const formatSelection = (w) => {
@@ -140,7 +166,6 @@ export default function WorkoutLogger({ team, profile }) {
 
       <h2>📋 Workout Log</h2>
 
-      {/* ===== COACH FILTER ===== */}
       {isCoach && (
         <select
           value={selectedAthlete}
@@ -156,48 +181,62 @@ export default function WorkoutLogger({ team, profile }) {
         </select>
       )}
 
-      {workoutsWithPR.length === 0 && (
+      {groupedWorkouts.length === 0 && (
         <div>No workouts yet.</div>
       )}
 
-      {workoutsWithPR.map(w => {
+      {groupedWorkouts.map(([date, lifts]) => {
 
-        const date = w.createdAt?.seconds
-          ? new Date(w.createdAt.seconds * 1000)
-          : null;
-
-        const isOpen = expanded === w.id;
+        const isOpen = expanded === date;
 
         return (
           <div
-            key={w.id}
+            key={date}
             className="card metric-card"
-            style={{ marginBottom: 10, cursor: "pointer" }}
-            onClick={() => setExpanded(isOpen ? null : w.id)}
+            style={{ marginBottom: 12, cursor: "pointer" }}
+            onClick={() => setExpanded(isOpen ? null : date)}
           >
-            <strong>
-              {w.exercise} — {w.weight} lbs — 
-              {formatSelection(w)} — 
-              {w.result}
-              {w.isPR && " 🏆"}
-            </strong>
 
-            {isCoach && (
+            <strong>{date}</strong>
+
+            {isCoach && lifts[0]?.athleteDisplayName && (
               <div style={{ fontSize: 12 }}>
-                {w.athleteDisplayName}
+                {lifts[0].athleteDisplayName}
               </div>
             )}
 
-            <div style={{ fontSize: 12 }}>
-              {date?.toLocaleDateString()}
-            </div>
+            {lifts.map(lift => (
 
-            {isOpen && (
-              <div style={{ marginTop: 10 }}>
-                <div>Selection: {formatExpandedSelection(w)}</div>
-                <div>Override Reason: {w.overrideReason || "-"}</div>
+              <div key={lift.id} style={{ marginTop: 5 }}>
+
+                {lift.exercise} — {lift.weight} lbs —{" "}
+                {formatSelection(lift)} —{" "}
+                <span
+                  style={{
+                    color:
+                      lift.result === "Pass"
+                        ? "#22c55e"
+                        : lift.result === "Fail"
+                        ? "#ef4444"
+                        : "#f59e0b"
+                  }}
+                >
+                  {lift.result}
+                </span>
+
+                {lift.isPR && " 🏆"}
+
+                {isOpen && (
+                  <div style={{ fontSize: 12, marginLeft: 10 }}>
+                    Selection: {formatExpandedSelection(lift)}
+                    <br />
+                    Override Reason: {lift.overrideReason || "-"}
+                  </div>
+                )}
+
               </div>
-            )}
+
+            ))}
 
           </div>
         );
