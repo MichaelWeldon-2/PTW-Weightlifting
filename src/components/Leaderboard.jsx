@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import HeroHeader from "../components/HeroHeader";
+
 export default function Leaderboard({ team }) {
 
   const seasons = ["Summer", "Fall", "Winter", "Spring"];
@@ -53,28 +54,27 @@ export default function Leaderboard({ team }) {
 
   /* ================= GET CURRENT SEASON INDEX ================= */
 
- const seasonOrder = {
-  Summer: 1,
-  Fall: 2,
-  Winter: 3,
-  Spring: 4
-};
+  const seasonOrder = {
+    Summer: 1,
+    Fall: 2,
+    Winter: 3,
+    Spring: 4
+  };
 
-const currentSeasonIndex = useMemo(() => {
+  const currentSeasonIndex = useMemo(() => {
 
-  const found = allData.find(
-    d => d.year === Number(year) && d.season === season
-  );
+    const found = allData.find(
+      d => d.year === Number(year) && d.season === season
+    );
 
-  if (!found) return null;
+    if (!found) return null;
 
-  // ✅ Use stored seasonIndex if present
-  if (found.seasonIndex) return found.seasonIndex;
+    if (found.seasonIndex) return found.seasonIndex;
 
-  // ✅ Fallback calculation (only if old data)
-  return Number(found.year) * 10 + seasonOrder[found.season];
+    return Number(found.year) * 10 + seasonOrder[found.season];
 
-}, [allData, year, season]);
+  }, [allData, year, season]);
+
   /* ================= FILTER CURRENT SEASON ================= */
 
   const seasonData = useMemo(() => {
@@ -99,70 +99,105 @@ const currentSeasonIndex = useMemo(() => {
     return [...seasonData].sort((a, b) => (b[key] || 0) - (a[key] || 0));
   }, [seasonData, category]);
 
-  /* ================= MOST IMPROVED (TRUE PREVIOUS SEASON) ================= */
+  /* ================= BUILD CLUB GROUPS ================= */
 
- const mostImproved = useMemo(() => {
+  const clubs = useMemo(() => {
 
-  if (!currentSeasonIndex) return [];
+    if (category !== "Clubs") return null;
 
-  // Get all unique season indexes sorted
-  const uniqueIndexes = [
-    ...new Set(allData.map(d => d.seasonIndex))
-  ].sort((a, b) => a - b);
+    const groups = {
+      "1000 Club": [],
+      "900 Club": [],
+      "800 Club": [],
+      "700 Club": [],
+      "600 Club": [],
+      "500 Club": [],
+      "Below 500": []
+    };
 
-  const currentPosition = uniqueIndexes.indexOf(currentSeasonIndex);
-  if (currentPosition <= 0) return [];
+    seasonData.forEach(a => {
 
-  const previousSeasonIndex = uniqueIndexes[currentPosition - 1];
+      const total = a.total || 0;
 
-  const previousSeasonData = allData.filter(
-    d => d.seasonIndex === previousSeasonIndex
-  );
+      if (total >= 1000) groups["1000 Club"].push(a);
+      else if (total >= 900) groups["900 Club"].push(a);
+      else if (total >= 800) groups["800 Club"].push(a);
+      else if (total >= 700) groups["700 Club"].push(a);
+      else if (total >= 600) groups["600 Club"].push(a);
+      else if (total >= 500) groups["500 Club"].push(a);
+      else groups["Below 500"].push(a);
 
-  const improvements = [];
-
-  seasonData.forEach(current => {
-
-    const previous = previousSeasonData.find(
-      p => p.athleteRosterId === current.athleteRosterId
-    );
-
-    if (!previous) return;
-
-    const diff = (current.total || 0) - (previous.total || 0);
-
-    const percent =
-      previous.total > 0
-        ? ((diff / previous.total) * 100).toFixed(1)
-        : 0;
-
-    const rosterEntry = roster.find(
-      r => r.id === current.athleteRosterId
-    );
-
-    improvements.push({
-      athleteName:
-        rosterEntry?.displayName ||
-        current.athleteDisplayName ||
-        "Unknown",
-      diff,
-      percent
     });
 
-  });
+    return groups;
 
-  return improvements.sort((a, b) => b.diff - a.diff);
+  }, [seasonData, category]);
 
-}, [seasonData, allData, currentSeasonIndex, roster]);
+  /* ================= MOST IMPROVED ================= */
+
+  const mostImproved = useMemo(() => {
+
+    if (!currentSeasonIndex) return [];
+
+    const uniqueIndexes = [
+      ...new Set(allData.map(d => d.seasonIndex))
+    ].sort((a, b) => a - b);
+
+    const currentPosition = uniqueIndexes.indexOf(currentSeasonIndex);
+    if (currentPosition <= 0) return [];
+
+    const previousSeasonIndex = uniqueIndexes[currentPosition - 1];
+
+    const previousSeasonData = allData.filter(
+      d => d.seasonIndex === previousSeasonIndex
+    );
+
+    const improvements = [];
+
+    seasonData.forEach(current => {
+
+      const previous = previousSeasonData.find(
+        p => p.athleteRosterId === current.athleteRosterId
+      );
+
+      if (!previous) return;
+
+      const diff = (current.total || 0) - (previous.total || 0);
+
+      const percent =
+        previous.total > 0
+          ? ((diff / previous.total) * 100).toFixed(1)
+          : 0;
+
+      const rosterEntry = roster.find(
+        r => r.id === current.athleteRosterId
+      );
+
+      improvements.push({
+        athleteName:
+          rosterEntry?.displayName ||
+          current.athleteDisplayName ||
+          "Unknown",
+        diff,
+        percent
+      });
+
+    });
+
+    return improvements.sort((a, b) => b.diff - a.diff);
+
+  }, [seasonData, allData, currentSeasonIndex, roster]);
 
   /* ================= UI ================= */
 
   return (
     <div className="card">
-<HeroHeader
-  title="Leaderboard"
-  image={team?.pageImages?.leaderboard}
-/>
+
+      <HeroHeader
+        title="Leaderboard"
+        image={team?.pageImages?.leaderboard}
+      />
+
       <h2>Leaderboard</h2>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -184,6 +219,7 @@ const currentSeasonIndex = useMemo(() => {
           <option>Bench</option>
           <option>Squat</option>
           <option>Power Clean</option>
+          <option>Clubs</option>
         </select>
 
       </div>
@@ -191,34 +227,78 @@ const currentSeasonIndex = useMemo(() => {
       <hr />
 
       <h3>Rankings</h3>
-      {sorted.length === 0 && <div>No data.</div>}
 
-      {sorted.map((athlete, index) => {
+      {category !== "Clubs" && (
+        <>
+          {sorted.length === 0 && <div>No data.</div>}
 
-        const rosterEntry = roster.find(
-          r => r.id === athlete.athleteRosterId
-        );
+          {sorted.map((athlete, index) => {
 
-        const resolvedName =
-          rosterEntry?.displayName ||
-          athlete.athleteDisplayName ||
-          "Unknown";
+            const rosterEntry = roster.find(
+              r => r.id === athlete.athleteRosterId
+            );
 
-        const value =
-          category === "Bench"
-            ? athlete.benchMax
-            : category === "Squat"
-            ? athlete.squatMax
-            : category === "Power Clean"
-            ? athlete.powerCleanMax
-            : athlete.total;
+            const resolvedName =
+              rosterEntry?.displayName ||
+              athlete.athleteDisplayName ||
+              "Unknown";
 
-        return (
-          <div key={athlete.athleteRosterId}>
-            #{index + 1} — {resolvedName} — {value || 0} lbs
-          </div>
-        );
-      })}
+            const value =
+              category === "Bench"
+                ? athlete.benchMax
+                : category === "Squat"
+                ? athlete.squatMax
+                : category === "Power Clean"
+                ? athlete.powerCleanMax
+                : athlete.total;
+
+            return (
+              <div key={athlete.athleteRosterId}>
+                #{index + 1} — {resolvedName} — {value || 0} lbs
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {category === "Clubs" && clubs && (
+        <>
+          {Object.entries(clubs).map(([clubName, members]) => {
+
+            if (members.length === 0) return null;
+
+            return (
+              <div key={clubName} style={{ marginBottom: 20 }}>
+
+                <h3>{clubName}</h3>
+
+                {members
+                  .sort((a, b) => (b.total || 0) - (a.total || 0))
+                  .map((athlete, index) => {
+
+                    const rosterEntry = roster.find(
+                      r => r.id === athlete.athleteRosterId
+                    );
+
+                    const resolvedName =
+                      rosterEntry?.displayName ||
+                      athlete.athleteDisplayName ||
+                      "Unknown";
+
+                    return (
+                      <div key={athlete.athleteRosterId}>
+                        {resolvedName} — {athlete.total || 0} lbs
+                      </div>
+                    );
+
+                  })}
+
+              </div>
+            );
+
+          })}
+        </>
+      )}
 
       <hr />
 
